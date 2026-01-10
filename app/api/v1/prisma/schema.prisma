@@ -1,0 +1,118 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  SUPER_ADMIN
+  MODERATOR
+  USER
+}
+
+enum MarketStatus {
+  OPEN
+  CLOSED
+  RESOLVED
+  CANCELLED
+}
+
+enum TransactionType {
+  BET
+  WIN
+  REFUND
+  BONUS
+  PENALTY
+}
+
+model User {
+  id                String             @id @default(cuid())
+  email             String             @unique
+  name              String?
+  phoneNumber       String?
+  password          String
+  profilePicUrl     String?
+  points            Int                @default(0)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  predictions       Prediction[]
+  pointTransactions PointTransaction[]
+}
+
+model Market {
+  id          String       @id @default(cuid())
+  title       String
+  description String?
+  status      MarketStatus @default(OPEN)
+  closesAt    DateTime
+
+  options     Option[]
+  predictions Prediction[]
+  resolution  MarketResolution?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Option {
+  id       String @id @default(cuid())
+  label    String // e.g. "Yes", "No", "Candidate A"
+  marketId String
+
+  market      Market       @relation(fields: [marketId], references: [id])
+  predictions Prediction[]
+
+  createdAt         DateTime           @default(now())
+  marketResolutions MarketResolution[]
+}
+
+model Prediction {
+  id       String @id @default(uuid())
+  userId   String
+  marketId String
+  optionId String
+
+  pointsStaked Int
+  isWinning    Boolean @default(false)
+
+  user   User   @relation(fields: [userId], references: [id])
+  market Market @relation(fields: [marketId], references: [id])
+  option Option @relation(fields: [optionId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@unique([userId, marketId]) // one prediction per user per market
+}
+
+model MarketResolution {
+  id       String @id @default(uuid())
+  marketId String @unique
+  optionId String
+
+  market Market @relation(fields: [marketId], references: [id])
+  option Option @relation(fields: [optionId], references: [id])
+
+  resolvedAt DateTime @default(now())
+}
+
+model PointTransaction {
+  id     String          @id @default(uuid())
+  userId String
+  amount Int // +ve or -ve
+  type   TransactionType
+  reason String?
+
+  user User @relation(fields: [userId], references: [id])
+
+  createdAt DateTime @default(now())
+}
