@@ -6,4 +6,15 @@ export class RegisterUserDto {
 
   @IsString()
   name: string;
+
+  @IsString()
+  password: string;
+
+  @IsOptional()
+  @IsString()
+  profilePicUrl: string;
+
+  @IsOptional()
+  @IsString()
+  phoneNumber: string;
 }
