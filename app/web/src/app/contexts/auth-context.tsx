@@ -7,6 +7,7 @@ import { usePathname } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api/client";
 import { clearAuthTokens, setAuthTokens } from "@/lib/api/client";
+import { getRefreshToken } from "@/lib/api/auth-tokens";
 
 export type UserRole = "ADMIN" | "USER" | "SUPER_ADMIN" | "MODERATOR";
 
@@ -66,11 +67,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (isPublicRoute) {
           return null;
         }
+
+        const refreshToken = getRefreshToken();
+        if (!refreshToken) {
+          return null;
+        }
+
         try {
-          await api.post("/auth/refresh");
+          const { data: refreshed } = await api.post(
+            "/auth/refresh",
+            { refreshToken },
+            {
+              params: { transport: "body" },
+              headers: { "x-auth-transport": "body" },
+            },
+          );
+          setAuthTokens({
+            accessToken: refreshed?.accessToken ?? null,
+            refreshToken: refreshed?.refreshToken ?? null,
+          });
           const { data } = await api.get("/auth/me");
           return data as User;
         } catch {
+          clearAuthTokens();
           return null;
         }
       }
