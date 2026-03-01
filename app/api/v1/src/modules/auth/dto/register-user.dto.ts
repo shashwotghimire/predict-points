@@ -12,9 +12,9 @@ export class RegisterUserDto {
 
   @IsOptional()
   @IsString()
-  profilePicUrl: string;
+  profilePicUrl?: string;
 
   @IsOptional()
   @IsString()
-  phoneNumber: string;
+  phoneNumber?: string;
 }

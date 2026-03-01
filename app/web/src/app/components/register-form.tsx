@@ -16,6 +16,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { AlertCircle } from "lucide-react";
+import GoogleLoginButton from "./google-login-button";
 
 export default function RegisterForm() {
   const [name, setName] = useState("");
@@ -24,7 +25,7 @@ export default function RegisterForm() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const { register } = useAuth();
+  const { register, startGoogleLogin } = useAuth();
   const router = useRouter();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -125,6 +126,22 @@ export default function RegisterForm() {
           <Button type="submit" className="w-full" disabled={isLoading}>
             {isLoading ? "Creating account..." : "Create Account"}
           </Button>
+
+          <div className="relative py-1">
+            <div className="absolute inset-0 flex items-center">
+              <span className="w-full border-t" />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-card px-2 text-muted-foreground">
+                Or continue with
+              </span>
+            </div>
+          </div>
+
+          <GoogleLoginButton
+            onClick={startGoogleLogin}
+            disabled={isLoading}
+          />
 
           <div className="text-center text-sm text-muted-foreground">
             Already have an account?{" "}

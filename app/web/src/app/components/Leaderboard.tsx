@@ -82,7 +82,7 @@ export default function Leaderboard() {
 
           <CardContent>
             <div className="space-y-0">
-              {mockLeaderboard.map((entry, idx) => (
+              {mockLeaderboard.map((entry) => (
                 <div
                   key={entry.rank}
                   className={`flex items-center justify-between p-4 border-b border-border last:border-b-0 ${
@@ -91,10 +91,7 @@ export default function Leaderboard() {
                 >
                   <div className="flex items-center gap-4 flex-1">
                     <div className="text-2xl font-bold text-muted-foreground w-8 text-right">
-                      {entry.rank === 1 && <span className="text-lg">🥇</span>}
-                      {entry.rank === 2 && <span className="text-lg">🥈</span>}
-                      {entry.rank === 3 && <span className="text-lg">🥉</span>}
-                      {entry.rank > 3 && <span>{entry.rank}</span>}
+                      <span>{entry.rank}</span>
                     </div>
                     <div>
                       <p className="font-semibold">

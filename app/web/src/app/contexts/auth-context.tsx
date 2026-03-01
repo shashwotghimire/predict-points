@@ -2,12 +2,17 @@
 
 import type React from "react";
 
-import { createContext, useContext, useState, useEffect } from "react";
+import { createContext, useContext, useMemo, useSyncExternalStore } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { api } from "@/lib/api/client";
+
+export type UserRole = "ADMIN" | "USER" | "SUPER_ADMIN" | "MODERATOR";
 
 export interface User {
   id: string;
   email: string;
   name: string;
+  role: UserRole;
   profilePicture?: string;
 }
 
@@ -16,112 +21,120 @@ interface AuthContextType {
   isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, name: string) => Promise<void>;
-  logout: () => void;
+  startGoogleLogin: () => void;
+  logout: () => Promise<void>;
   updateProfile: (name: string, profilePicture?: string) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+const subscribe = () => () => {};
+const getClientSnapshot = () => true;
+const getServerSnapshot = () => false;
 
-  // Load user from localStorage on mount
-  useEffect(() => {
-    const stored = localStorage.getItem("predictpoints_user");
-    if (stored) {
-      setUser(JSON.parse(stored));
-    }
-    setIsLoading(false);
-  }, []);
+export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const queryClient = useQueryClient();
+  const isClient = useSyncExternalStore(
+    subscribe,
+    getClientSnapshot,
+    getServerSnapshot
+  );
+
+  const meQuery = useQuery({
+    queryKey: ["auth", "me"],
+    enabled: isClient,
+    retry: false,
+    queryFn: async () => {
+      try {
+        const { data } = await api.get("/auth/me");
+        return data as User;
+      } catch {
+        try {
+          await api.post("/auth/refresh");
+          const { data } = await api.get("/auth/me");
+          return data as User;
+        } catch {
+          return null;
+        }
+      }
+    },
+  });
+
+  const authMutation = useMutation({
+    mutationFn: async (
+      payload:
+        | { mode: "login"; email: string; password: string }
+        | { mode: "register"; email: string; password: string; name: string }
+    ) => {
+      if (payload.mode === "login") {
+        const { data } = await api.post("/auth/login", {
+          email: payload.email,
+          password: payload.password,
+        });
+        return data as { user: User };
+      }
+
+      const { data } = await api.post("/auth/register", {
+        email: payload.email,
+        password: payload.password,
+        name: payload.name,
+      });
+      return data as { user: User };
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["auth", "me"] });
+    },
+  });
 
   const login = async (email: string, password: string) => {
-    // Simple mock auth - in production, validate against backend
-    const stored = localStorage.getItem("predictpoints_users");
-    const users = stored ? JSON.parse(stored) : [];
-    const foundUser = users.find(
-      (u: any) => u.email === email && u.password === password
-    );
-
-    if (!foundUser) {
-      throw new Error("Invalid email or password");
-    }
-
-    const userData: User = {
-      id: foundUser.id,
-      email: foundUser.email,
-      name: foundUser.name,
-      profilePicture: foundUser.profilePicture,
-    };
-
-    setUser(userData);
-    localStorage.setItem("predictpoints_user", JSON.stringify(userData));
+    await authMutation.mutateAsync({ mode: "login", email, password });
   };
 
   const register = async (email: string, password: string, name: string) => {
-    const stored = localStorage.getItem("predictpoints_users");
-    const users = stored ? JSON.parse(stored) : [];
-
-    if (users.find((u: any) => u.email === email)) {
-      throw new Error("Email already registered");
-    }
-
-    const newUser = {
-      id: crypto.randomUUID(),
-      email,
-      password,
-      name,
-      profilePicture: undefined,
-    };
-
-    users.push(newUser);
-    localStorage.setItem("predictpoints_users", JSON.stringify(users));
-
-    const userData: User = {
-      id: newUser.id,
-      email: newUser.email,
-      name: newUser.name,
-    };
-
-    setUser(userData);
-    localStorage.setItem("predictpoints_user", JSON.stringify(userData));
+    await authMutation.mutateAsync({ mode: "register", email, password, name });
   };
 
-  const logout = () => {
-    setUser(null);
-    localStorage.removeItem("predictpoints_user");
+  const startGoogleLogin = () => {
+    const base =
+      process.env.NEXT_PUBLIC_API_BASE_URL ||
+      process.env.NEXT_PUBLIC_API_URL ||
+      "http://localhost:3001";
+    window.location.href = `${base.replace(/\/$/, "")}/api/v1/auth/google/start`;
+  };
+
+  const logout = async () => {
+    try {
+      await api.post("/auth/logout");
+    } finally {
+      queryClient.setQueryData(["auth", "me"], null);
+      queryClient.invalidateQueries({ queryKey: ["auth"] });
+    }
   };
 
   const updateProfile = (name: string, profilePicture?: string) => {
-    if (!user) return;
-
-    const updated: User = {
-      ...user,
+    const current = meQuery.data;
+    if (!current) return;
+    queryClient.setQueryData(["auth", "me"], {
+      ...current,
       name,
       profilePicture,
-    };
-
-    setUser(updated);
-    localStorage.setItem("predictpoints_user", JSON.stringify(updated));
-
-    // Update in users list
-    const stored = localStorage.getItem("predictpoints_users");
-    const users = stored ? JSON.parse(stored) : [];
-    const userIndex = users.findIndex((u: any) => u.id === user.id);
-    if (userIndex !== -1) {
-      users[userIndex].name = name;
-      users[userIndex].profilePicture = profilePicture;
-      localStorage.setItem("predictpoints_users", JSON.stringify(users));
-    }
+    });
   };
 
-  return (
-    <AuthContext.Provider
-      value={{ user, isLoading, login, register, logout, updateProfile }}
-    >
-      {children}
-    </AuthContext.Provider>
+  const value = useMemo(
+    () => ({
+      user: meQuery.data ?? null,
+      isLoading: !isClient || meQuery.isLoading || authMutation.isPending,
+      login,
+      register,
+      startGoogleLogin,
+      logout,
+      updateProfile,
+    }),
+    [isClient, meQuery.data, meQuery.isLoading, authMutation.isPending]
   );
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth() {

@@ -1,27 +1,35 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../contexts/auth-context";
 import Navigation from "../components/navigation";
 import PredictionsFeed from "../components/prediction-feed";
 import Leaderboard from "../components/Leaderboard";
 import RewardsMarketplace from "../components/rewards-marketplace";
-import { useState } from "react";
+import ActivityFeed from "../components/activity-feed";
+import { useUserPoints } from "@/hooks/use-api";
 
 export default function DashboardPage() {
   const { user, isLoading } = useAuth();
   const router = useRouter();
   const [currentPage, setCurrentPage] = useState<
-    "predictions" | "leaderboard" | "rewards"
+    "predictions" | "activity" | "leaderboard" | "rewards"
   >("predictions");
-  const [userPoints, setUserPoints] = useState(245);
+  const [selectedCategory, setSelectedCategory] = useState<
+    "trending" | "politics" | "sports"
+  >("trending");
+  const [searchTerm, setSearchTerm] = useState("");
 
   useEffect(() => {
     if (!isLoading && !user) {
       router.push("/login");
+      return;
     }
   }, [user, isLoading, router]);
+
+  const userPointsQuery = useUserPoints(user?.id);
+  const userPoints = userPointsQuery.data ?? 0;
 
   if (isLoading || !user) {
     return (
@@ -40,20 +48,26 @@ export default function DashboardPage() {
         currentPage={currentPage}
         setCurrentPage={setCurrentPage}
         userPoints={userPoints}
+        selectedCategory={selectedCategory}
+        setSelectedCategory={setSelectedCategory}
+        searchTerm={searchTerm}
+        setSearchTerm={setSearchTerm}
       />
 
       {currentPage === "predictions" && (
         <PredictionsFeed
-          setUserPoints={setUserPoints}
-          userPoints={userPoints}
+          selectedCategory={selectedCategory}
+          searchTerm={searchTerm}
         />
+      )}
+
+      {currentPage === "activity" && (
+        <ActivityFeed onOpenLeaderboard={() => setCurrentPage("leaderboard")} />
       )}
 
       {currentPage === "leaderboard" && <Leaderboard />}
 
-      {currentPage === "rewards" && (
-        <RewardsMarketplace userPoints={userPoints} />
-      )}
+      {currentPage === "rewards" && <RewardsMarketplace userPoints={userPoints} />}
     </div>
   );
 }

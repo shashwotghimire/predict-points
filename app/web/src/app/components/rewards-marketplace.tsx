@@ -1,7 +1,12 @@
+"use client";
+
+import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Gift, Smartphone, Coffee, AlertCircle } from "lucide-react";
+import { useAuth } from "../contexts/auth-context";
+import { useRedeemReward } from "@/hooks/use-api";
 
 interface RewardsMarketplaceProps {
   userPoints: number;
@@ -40,27 +45,15 @@ const mockRewards = [
     icon: Gift,
     status: "coming-soon",
   },
-  {
-    id: 5,
-    name: "Gaming Credits",
-    description: "$25 credit for gaming platforms",
-    pointsRequired: 400,
-    icon: Gift,
-    status: "coming-soon",
-  },
-  {
-    id: 6,
-    name: "Premium Subscription",
-    description: "1 month of premium features",
-    pointsRequired: 500,
-    icon: Gift,
-    status: "coming-soon",
-  },
 ];
 
 export default function RewardsMarketplace({
   userPoints,
 }: RewardsMarketplaceProps) {
+  const { user } = useAuth();
+  const [message, setMessage] = useState("");
+  const redeemMutation = useRedeemReward();
+
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
       <div className="space-y-6">
@@ -82,6 +75,7 @@ export default function RewardsMarketplace({
             <p className="text-3xl font-bold text-primary">
               {userPoints.toLocaleString()} points
             </p>
+            {message && <p className="text-sm mt-2 text-muted-foreground">{message}</p>}
           </CardContent>
         </Card>
 
@@ -106,9 +100,7 @@ export default function RewardsMarketplace({
                         <Icon className="w-5 h-5 text-primary" />
                       </div>
                       <div>
-                        <CardTitle className="text-base">
-                          {reward.name}
-                        </CardTitle>
+                        <CardTitle className="text-base">{reward.name}</CardTitle>
                       </div>
                     </div>
                     {reward.status === "coming-soon" && (
@@ -128,9 +120,7 @@ export default function RewardsMarketplace({
 
                   <div className="space-y-3">
                     <div className="flex items-center justify-between">
-                      <span className="text-sm font-semibold">
-                        Points Required
-                      </span>
+                      <span className="text-sm font-semibold">Points Required</span>
                       <span className="text-lg font-bold text-primary">
                         {reward.pointsRequired}
                       </span>
@@ -144,6 +134,16 @@ export default function RewardsMarketplace({
                             ? "bg-primary hover:bg-primary/90 text-primary-foreground"
                             : ""
                         }`}
+                        onClick={() => {
+                          if (!user) return;
+                          if (!user) return;
+                          redeemMutation.mutate({
+                            userId: user.id,
+                            rewardName: reward.name,
+                            pointsSpent: reward.pointsRequired,
+                          });
+                          setMessage(`Redeemed ${reward.name}. Refresh dashboard to see updated points.`);
+                        }}
                       >
                         {canRedeem ? "Redeem Now" : "Not Enough Points"}
                       </Button>

@@ -1,0 +1,15 @@
+import { Injectable } from '@nestjs/common';
+import { PrismaService } from 'src/prisma/prisma.service';
+
+@Injectable()
+export class ActivityService {
+  constructor(private readonly prisma: PrismaService) {}
+
+  async list() {
+    return this.prisma.activityLog.findMany({
+      include: { user: true, market: true },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    });
+  }
+}

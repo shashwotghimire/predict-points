@@ -1,9 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider     = "prisma-client"
   output       = "../generated/prisma"
@@ -15,9 +9,15 @@ datasource db {
 }
 
 enum UserRole {
+  ADMIN
+  USER
   SUPER_ADMIN
   MODERATOR
-  USER
+}
+
+enum AuthProvider {
+  LOCAL
+  GOOGLE
 }
 
 enum MarketStatus {
@@ -25,6 +25,18 @@ enum MarketStatus {
   CLOSED
   RESOLVED
   CANCELLED
+}
+
+enum MarketType {
+  YES_NO
+  MULTI_4
+  OVER_UNDER
+}
+
+enum MarketCategory {
+  TRENDING
+  POLITICS
+  SPORTS
 }
 
 enum TransactionType {
@@ -35,55 +47,110 @@ enum TransactionType {
   PENALTY
 }
 
+enum PredictionStatus {
+  ACTIVE
+  WON
+  LOST
+  VOID
+}
+
+enum ActivityType {
+  EVENT_CREATED
+  EVENT_UPDATED
+  EVENT_DELETED
+  EVENT_DECLARED
+  PREDICTION_SUBMITTED
+  COMMENT_ADDED
+  REWARD_REDEEMED
+}
+
+enum RewardStatus {
+  REDEEMED
+  CANCELLED
+}
+
 model User {
   id                String             @id @default(cuid())
   email             String             @unique
   name              String?
   phoneNumber       String?
   password          String
+  authProvider      AuthProvider       @default(LOCAL)
+  googleId          String?            @unique
+  refreshTokenHash  String?
+  refreshTokenExp   DateTime?
   profilePicUrl     String?
+  role              UserRole           @default(USER)
   points            Int                @default(0)
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
+
+  createdMarkets    Market[]           @relation("CreatedMarkets")
   predictions       Prediction[]
   pointTransactions PointTransaction[]
+  comments          EventComment[]
+  activities        ActivityLog[]
+  rewardRedemptions RewardRedemption[]
 }
 
 model Market {
-  id          String       @id @default(cuid())
-  title       String
-  description String?
-  status      MarketStatus @default(OPEN)
-  closesAt    DateTime
+  id               String           @id @default(cuid())
+  title            String
+  description      String?
+  category         MarketCategory   @default(TRENDING)
+  type             MarketType       @default(YES_NO)
+  status           MarketStatus     @default(OPEN)
+  eventIconUrl     String?
+  closesAt         DateTime
+  isDeclared       Boolean          @default(false)
+  declaredAt       DateTime?
+  declaredOptionId String?
+  createdById      String?
 
-  options     Option[]
-  predictions Prediction[]
-  resolution  MarketResolution?
+  createdBy      User?             @relation("CreatedMarkets", fields: [createdById], references: [id])
+  declaredOption Option?           @relation("DeclaredOption", fields: [declaredOptionId], references: [id])
+  options        Option[]          @relation("MarketOptions")
+  predictions    Prediction[]
+  resolution     MarketResolution?
+  oddsSnapshots  OddsSnapshot[]
+  comments       EventComment[]
+  activities     ActivityLog[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([category, status])
+  @@index([type])
+  @@index([createdById])
 }
 
 model Option {
-  id       String @id @default(cuid())
-  label    String // e.g. "Yes", "No", "Candidate A"
-  marketId String
+  id         String @id @default(cuid())
+  label      String
+  percentage Int    @default(50)
+  marketId   String
 
-  market      Market       @relation(fields: [marketId], references: [id])
-  predictions Prediction[]
-
-  createdAt         DateTime           @default(now())
+  market            Market              @relation("MarketOptions", fields: [marketId], references: [id])
+  predictions       Prediction[]
   marketResolutions MarketResolution[]
+  oddsSnapshots     OddsSnapshot[]
+  declaredInMarkets Market[]            @relation("DeclaredOption")
+
+  createdAt DateTime @default(now())
+
+  @@index([marketId])
 }
 
 model Prediction {
-  id       String @id @default(uuid())
-  userId   String
-  marketId String
-  optionId String
-
-  pointsStaked Int
-  isWinning    Boolean @default(false)
+  id                String           @id @default(uuid())
+  userId            String
+  marketId          String
+  optionId          String
+  pointsStaked      Int
+  potentialWinnings Int              @default(0)
+  status            PredictionStatus @default(ACTIVE)
+  isWinning         Boolean          @default(false)
+  resolvedAt        DateTime?
 
   user   User   @relation(fields: [userId], references: [id])
   market Market @relation(fields: [marketId], references: [id])
@@ -91,7 +158,9 @@ model Prediction {
 
   createdAt DateTime @default(now())
 
-  @@unique([userId, marketId]) // one prediction per user per market
+  @@unique([userId, marketId])
+  @@index([marketId, status])
+  @@index([userId, status])
 }
 
 model MarketResolution {
@@ -105,14 +174,72 @@ model MarketResolution {
   resolvedAt DateTime @default(now())
 }
 
+model OddsSnapshot {
+  id         String   @id @default(uuid())
+  marketId   String
+  optionId   String
+  percentage Int
+  createdAt  DateTime @default(now())
+
+  market Market @relation(fields: [marketId], references: [id])
+  option Option @relation(fields: [optionId], references: [id])
+
+  @@index([marketId, createdAt])
+  @@index([optionId, createdAt])
+}
+
+model EventComment {
+  id        String   @id @default(uuid())
+  marketId  String
+  userId    String
+  content   String
+  createdAt DateTime @default(now())
+
+  market Market @relation(fields: [marketId], references: [id])
+  user   User   @relation(fields: [userId], references: [id])
+
+  @@index([marketId, createdAt])
+  @@index([userId, createdAt])
+}
+
+model ActivityLog {
+  id        String       @id @default(uuid())
+  userId    String?
+  marketId  String?
+  type      ActivityType
+  message   String
+  createdAt DateTime     @default(now())
+
+  user   User?   @relation(fields: [userId], references: [id])
+  market Market? @relation(fields: [marketId], references: [id])
+
+  @@index([createdAt])
+  @@index([marketId, createdAt])
+}
+
+model RewardRedemption {
+  id          String       @id @default(uuid())
+  userId      String
+  rewardName  String
+  pointsSpent Int
+  status      RewardStatus @default(REDEEMED)
+  createdAt   DateTime     @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, createdAt])
+}
+
 model PointTransaction {
   id     String          @id @default(uuid())
   userId String
-  amount Int // +ve or -ve
+  amount Int
   type   TransactionType
   reason String?
 
   user User @relation(fields: [userId], references: [id])
 
   createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
 }
