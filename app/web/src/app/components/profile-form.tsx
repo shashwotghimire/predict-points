@@ -217,6 +217,20 @@ export default function ProfileForm() {
                       <p className="text-sm text-muted-foreground">Options: {prediction.availableOptions.map((o: any) => o.label).join(", ")}</p>
                       <p className="text-sm">Chosen: {prediction.selectedOptionLabel}</p>
                       <p className="text-sm">
+                        Result:{" "}
+                        <span
+                          className={`font-medium ${
+                            !prediction.eventResultLabel
+                              ? "text-muted-foreground"
+                              : prediction.eventResultLabel === prediction.selectedOptionLabel
+                                ? "text-green-600"
+                                : "text-red-600"
+                          }`}
+                        >
+                          {prediction.eventResultLabel ?? "Pending declaration"}
+                        </span>
+                      </p>
+                      <p className="text-sm">
                         Status:{" "}
                         <span
                           className={`font-medium ${

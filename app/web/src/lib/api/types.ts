@@ -42,6 +42,7 @@ export interface PredictionRecord {
   selectedOptionId: string;
   selectedOptionLabel: string;
   availableOptions: EventOption[];
+  eventResultLabel?: string | null;
   potentialWinnings: number;
   status: string;
   createdAt: string;

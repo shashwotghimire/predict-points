@@ -40,18 +40,27 @@ export const mapMarket = (raw: any): MarketEvent => {
   };
 };
 
-export const mapPrediction = (raw: any): PredictionRecord => ({
-  id: raw.id,
-  eventId: raw.marketId,
-  eventTitle: raw.market?.title ?? '',
-  selectedOptionId: raw.optionId,
-  selectedOptionLabel: raw.option?.label ?? '',
-  availableOptions: (raw.market?.options ?? []).map((option: any) => ({
+export const mapPrediction = (raw: any): PredictionRecord => {
+  const availableOptions = (raw.market?.options ?? []).map((option: any) => ({
     id: option.id,
     label: option.label,
     percentage: option.percentage,
-  })),
-  potentialWinnings: raw.potentialWinnings,
-  status: raw.status,
-  createdAt: raw.createdAt,
-});
+  }));
+  const declaredOptionId = raw.market?.declaredOptionId ?? null;
+  const declaredOption = availableOptions.find(
+    (option: { id: string }) => option.id === declaredOptionId,
+  );
+
+  return {
+    id: raw.id,
+    eventId: raw.marketId,
+    eventTitle: raw.market?.title ?? '',
+    selectedOptionId: raw.optionId,
+    selectedOptionLabel: raw.option?.label ?? '',
+    availableOptions,
+    eventResultLabel: declaredOption?.label ?? null,
+    potentialWinnings: raw.potentialWinnings,
+    status: raw.status,
+    createdAt: raw.createdAt,
+  };
+};

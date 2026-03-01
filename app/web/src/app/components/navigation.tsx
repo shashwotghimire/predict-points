@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   Activity,
   ShieldCheck,
@@ -45,8 +45,10 @@ export default function Navigation({
   searchTerm,
   setSearchTerm,
 }: NavigationProps) {
+  const pathname = usePathname();
   const { user, logout } = useAuth();
   const router = useRouter();
+  const isAdmin = user?.role === "ADMIN" || user?.role === "SUPER_ADMIN";
 
   const handleLogout = () => {
     logout();
@@ -85,6 +87,25 @@ export default function Navigation({
           </div>
 
           <div className="flex items-center gap-3 sm:gap-4">
+            {isAdmin ? (
+              <div className="hidden items-center gap-2 lg:flex">
+                <Button
+                  variant={pathname.startsWith("/dashboard") ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => router.push("/dashboard")}
+                >
+                  Dashboard
+                </Button>
+                <Button
+                  variant={pathname.startsWith("/admin") ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => router.push("/admin")}
+                >
+                  Admin Panel
+                </Button>
+              </div>
+            ) : null}
+
             <div className="text-right hidden sm:block">
               <p className="text-xs text-muted-foreground">Total Points</p>
               <p className="text-lg font-semibold text-primary">
@@ -128,7 +149,7 @@ export default function Navigation({
                   <Settings className="w-4 h-4" />
                   Profile
                 </DropdownMenuItem>
-                {user?.role === "ADMIN" || user?.role === "SUPER_ADMIN" ? (
+                {isAdmin ? (
                   <DropdownMenuItem
                     onClick={() => router.push("/admin")}
                     className="gap-2 cursor-pointer"

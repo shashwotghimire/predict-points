@@ -1,7 +1,7 @@
 "use client";
 
 import { LogOut, Search, Settings } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "../contexts/auth-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,8 +23,10 @@ export default function AdminNavigation({
   searchTerm,
   setSearchTerm,
 }: AdminNavigationProps) {
+  const pathname = usePathname();
   const router = useRouter();
   const { user, logout } = useAuth();
+  const isAdmin = user?.role === "ADMIN" || user?.role === "SUPER_ADMIN";
 
   const initials =
     user?.name
@@ -61,6 +63,25 @@ export default function AdminNavigation({
               className="pl-9"
             />
           </div>
+
+          {isAdmin ? (
+            <div className="hidden items-center gap-2 md:flex">
+              <Button
+                variant={pathname.startsWith("/dashboard") ? "default" : "outline"}
+                size="sm"
+                onClick={() => router.push("/dashboard")}
+              >
+                Dashboard
+              </Button>
+              <Button
+                variant={pathname.startsWith("/admin") ? "default" : "outline"}
+                size="sm"
+                onClick={() => router.push("/admin")}
+              >
+                Admin Panel
+              </Button>
+            </div>
+          ) : null}
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
