@@ -3,6 +3,7 @@
 import type React from "react";
 
 import { createContext, useContext, useMemo, useSyncExternalStore } from "react";
+import { usePathname } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api/client";
 
@@ -34,11 +35,17 @@ const getServerSnapshot = () => false;
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient();
+  const pathname = usePathname();
   const isClient = useSyncExternalStore(
     subscribe,
     getClientSnapshot,
     getServerSnapshot
   );
+  const isPublicRoute =
+    pathname === "/" ||
+    pathname === "/landing" ||
+    pathname === "/login" ||
+    pathname === "/register";
 
   const meQuery = useQuery({
     queryKey: ["auth", "me"],
@@ -49,6 +56,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const { data } = await api.get("/auth/me");
         return data as User;
       } catch {
+        if (isPublicRoute) {
+          return null;
+        }
         try {
           await api.post("/auth/refresh");
           const { data } = await api.get("/auth/me");

@@ -234,9 +234,6 @@ export default function PredictionsFeed({ selectedCategory, searchTerm }: Predic
       <div className="space-y-6">
         <div>
           <h1 className="text-3xl font-bold">Prediction Events</h1>
-          <p className="text-muted-foreground mt-2">
-            All market actions are served from the Nest API.
-          </p>
         </div>
 
         {isAdmin && (

@@ -19,15 +19,28 @@ import type { Response } from 'express';
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
+  private cookieSettings() {
+    const secure =
+      process.env.COOKIE_SECURE === 'true' || process.env.NODE_ENV === 'production';
+    const sameSite = (process.env.COOKIE_SAMESITE || (secure ? 'none' : 'lax')) as
+      | 'lax'
+      | 'none'
+      | 'strict';
+    const domain = process.env.COOKIE_DOMAIN || undefined;
+
+    return { secure, sameSite, domain };
+  }
+
   private setAuthCookies(
     res: Response,
     tokens: { accessToken: string; refreshToken: string },
   ) {
-    const secure = process.env.NODE_ENV === 'production';
+    const { secure, sameSite, domain } = this.cookieSettings();
     res.cookie('access_token', tokens.accessToken, {
       httpOnly: true,
       secure,
-      sameSite: 'lax',
+      sameSite,
+      domain,
       path: '/',
       maxAge: 1000 * 60 * 15,
     });
@@ -35,16 +48,18 @@ export class AuthController {
     res.cookie('refresh_token', tokens.refreshToken, {
       httpOnly: true,
       secure,
-      sameSite: 'lax',
+      sameSite,
+      domain,
       path: '/',
       maxAge: 1000 * 60 * 60 * 24 * 30,
     });
   }
 
   private clearAuthCookies(res: Response) {
-    res.clearCookie('access_token', { path: '/' });
-    res.clearCookie('refresh_token', { path: '/' });
-    res.clearCookie('oauth_state', { path: '/' });
+    const { domain } = this.cookieSettings();
+    res.clearCookie('access_token', { path: '/', domain });
+    res.clearCookie('refresh_token', { path: '/', domain });
+    res.clearCookie('oauth_state', { path: '/', domain });
   }
 
   @Post('register')
@@ -70,11 +85,12 @@ export class AuthController {
   @Get('google/start')
   googleStart(@Res() res: Response) {
     const state = this.authService.generateOauthState();
-    const secure = process.env.NODE_ENV === 'production';
+    const { secure, sameSite, domain } = this.cookieSettings();
     res.cookie('oauth_state', state, {
       httpOnly: true,
       secure,
-      sameSite: 'lax',
+      sameSite,
+      domain,
       path: '/',
       maxAge: 1000 * 60 * 10,
     });

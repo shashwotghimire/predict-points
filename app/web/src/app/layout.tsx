@@ -15,21 +15,7 @@ export const metadata: Metadata = {
     "Gamified prediction platform with points-based rewards. No money involved.",
   generator: "v0.app",
   icons: {
-    icon: [
-      {
-        url: "/icon-light-32x32.png",
-        media: "(prefers-color-scheme: light)",
-      },
-      {
-        url: "/icon-dark-32x32.png",
-        media: "(prefers-color-scheme: dark)",
-      },
-      {
-        url: "/icon.svg",
-        type: "image/svg+xml",
-      },
-    ],
-    apple: "/apple-icon.png",
+    icon: [{ url: "/icon.svg", type: "image/svg+xml" }],
   },
 };
 
@@ -38,13 +24,16 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const analyticsEnabled =
+    process.env.NEXT_PUBLIC_ENABLE_VERCEL_ANALYTICS === "true";
+
   return (
     <html lang="en">
       <body className={`font-sans antialiased`}>
         <Providers>
           <AuthProvider>
             {children}
-            <Analytics />
+            {analyticsEnabled ? <Analytics /> : null}
           </AuthProvider>
         </Providers>
       </body>
