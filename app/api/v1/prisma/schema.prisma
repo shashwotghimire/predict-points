@@ -69,6 +69,15 @@ enum RewardStatus {
   CANCELLED
 }
 
+enum RewardType {
+  TOPUP
+  DISCOUNT_COUPON
+  FOOD_VOUCHER
+  FREE_PINTS
+  GIFT_CARD
+  OTHER
+}
+
 model User {
   id                String             @id @default(cuid())
   email             String             @unique
@@ -97,6 +106,7 @@ model Reward {
   id             String             @id @default(cuid())
   name           String
   description    String?
+  type           RewardType         @default(OTHER)
   pointsRequired Int
   iconKey        String?
   isActive       Boolean            @default(true)
@@ -106,6 +116,7 @@ model Reward {
   redemptions RewardRedemption[]
 
   @@index([isActive, createdAt])
+  @@index([type])
 }
 
 model Market {
@@ -237,6 +248,7 @@ model RewardRedemption {
   userId      String
   rewardId    String?
   rewardName  String
+  redemptionData Json?
   pointsSpent Int
   status      RewardStatus @default(REDEEMED)
   createdAt   DateTime     @default(now())

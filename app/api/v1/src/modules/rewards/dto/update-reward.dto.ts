@@ -1,4 +1,12 @@
-import { IsBoolean, IsInt, IsOptional, IsString, Min } from 'class-validator';
+import {
+  IsBoolean,
+  IsEnum,
+  IsInt,
+  IsOptional,
+  IsString,
+  Min,
+} from 'class-validator';
+import { RewardType } from '../../../../generated/prisma/enums';
 
 export class UpdateRewardDto {
   @IsOptional()
@@ -8,6 +16,10 @@ export class UpdateRewardDto {
   @IsOptional()
   @IsString()
   description?: string;
+
+  @IsOptional()
+  @IsEnum(RewardType)
+  type?: RewardType;
 
   @IsOptional()
   @IsInt()

@@ -1,5 +1,12 @@
 export type EventCategory = 'trending' | 'politics' | 'sports';
 export type MarketType = 'YES_NO' | 'MULTI_4' | 'OVER_UNDER';
+export type RewardType =
+  | 'TOPUP'
+  | 'DISCOUNT_COUPON'
+  | 'FOOD_VOUCHER'
+  | 'FREE_PINTS'
+  | 'GIFT_CARD'
+  | 'OTHER';
 
 export interface EventOption {
   id: string;
@@ -62,6 +69,7 @@ export interface RewardCatalogItem {
   id: string;
   name: string;
   description?: string | null;
+  type: RewardType;
   pointsRequired: number;
   iconKey?: string | null;
   isActive: boolean;

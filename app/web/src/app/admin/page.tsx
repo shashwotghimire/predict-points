@@ -18,6 +18,7 @@ import {
   useUpdateReward,
 } from "@/hooks/use-api";
 import AdminNavigation from "../components/admin-navigation";
+import { RewardType } from "@/lib/api/types";
 
 export default function AdminPage() {
   const { user, isLoading } = useAuth();
@@ -28,11 +29,13 @@ export default function AdminPage() {
   const [rewardsPage, setRewardsPage] = useState(1);
   const [newRewardName, setNewRewardName] = useState("");
   const [newRewardDescription, setNewRewardDescription] = useState("");
+  const [newRewardType, setNewRewardType] = useState<RewardType>("OTHER");
   const [newRewardPoints, setNewRewardPoints] = useState(100);
   const [newRewardIconKey, setNewRewardIconKey] = useState("gift");
   const [editingRewardId, setEditingRewardId] = useState<string | null>(null);
   const [editRewardName, setEditRewardName] = useState("");
   const [editRewardDescription, setEditRewardDescription] = useState("");
+  const [editRewardType, setEditRewardType] = useState<RewardType>("OTHER");
   const [editRewardPoints, setEditRewardPoints] = useState(100);
   const [editRewardIconKey, setEditRewardIconKey] = useState("gift");
   const [editRewardActive, setEditRewardActive] = useState(true);
@@ -135,12 +138,14 @@ export default function AdminPage() {
       await createRewardMutation.mutateAsync({
         name: newRewardName.trim(),
         description: newRewardDescription.trim() || undefined,
+        type: newRewardType,
         pointsRequired: Math.floor(newRewardPoints),
         iconKey: newRewardIconKey.trim() || undefined,
         isActive: true,
       });
       setNewRewardName("");
       setNewRewardDescription("");
+      setNewRewardType("OTHER");
       setNewRewardPoints(100);
       setNewRewardIconKey("gift");
     } catch {
@@ -152,6 +157,7 @@ export default function AdminPage() {
     id: string;
     name: string;
     description?: string | null;
+    type: RewardType;
     pointsRequired: number;
     iconKey?: string | null;
     isActive: boolean;
@@ -159,6 +165,7 @@ export default function AdminPage() {
     setEditingRewardId(reward.id);
     setEditRewardName(reward.name);
     setEditRewardDescription(reward.description ?? "");
+    setEditRewardType(reward.type);
     setEditRewardPoints(reward.pointsRequired);
     setEditRewardIconKey(reward.iconKey ?? "gift");
     setEditRewardActive(reward.isActive);
@@ -181,6 +188,7 @@ export default function AdminPage() {
         id: rewardId,
         name: editRewardName.trim(),
         description: editRewardDescription.trim() || undefined,
+        type: editRewardType,
         pointsRequired: Math.floor(editRewardPoints),
         iconKey: editRewardIconKey.trim() || undefined,
         isActive: editRewardActive,
@@ -313,7 +321,7 @@ export default function AdminPage() {
         <Card>
           <CardHeader><CardTitle>Rewards Manager</CardTitle></CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid gap-3 md:grid-cols-4">
+            <div className="grid gap-3 md:grid-cols-5">
               <div className="space-y-2">
                 <Label htmlFor="reward-name">Name</Label>
                 <Input
@@ -331,6 +339,22 @@ export default function AdminPage() {
                   onChange={(event) => setNewRewardDescription(event.target.value)}
                   placeholder="NPR 500 mobile credit"
                 />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="reward-type">Type</Label>
+                <select
+                  id="reward-type"
+                  value={newRewardType}
+                  onChange={(event) => setNewRewardType(event.target.value as RewardType)}
+                  className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm"
+                >
+                  <option value="TOPUP">Topup</option>
+                  <option value="DISCOUNT_COUPON">Discount Coupon</option>
+                  <option value="FOOD_VOUCHER">Food Voucher</option>
+                  <option value="FREE_PINTS">Free Pints</option>
+                  <option value="GIFT_CARD">Gift Card</option>
+                  <option value="OTHER">Other</option>
+                </select>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="reward-points">Points</Label>
@@ -370,9 +394,21 @@ export default function AdminPage() {
                 rewards.map((reward) => (
                   <div key={reward.id} className="rounded-md border border-border p-3 space-y-3">
                     {editingRewardId === reward.id ? (
-                      <div className="grid gap-2 md:grid-cols-5">
+                      <div className="grid gap-2 md:grid-cols-6">
                         <Input value={editRewardName} onChange={(event) => setEditRewardName(event.target.value)} />
                         <Input value={editRewardDescription} onChange={(event) => setEditRewardDescription(event.target.value)} />
+                        <select
+                          value={editRewardType}
+                          onChange={(event) => setEditRewardType(event.target.value as RewardType)}
+                          className="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
+                        >
+                          <option value="TOPUP">Topup</option>
+                          <option value="DISCOUNT_COUPON">Discount Coupon</option>
+                          <option value="FOOD_VOUCHER">Food Voucher</option>
+                          <option value="FREE_PINTS">Free Pints</option>
+                          <option value="GIFT_CARD">Gift Card</option>
+                          <option value="OTHER">Other</option>
+                        </select>
                         <Input
                           type="number"
                           min={1}
@@ -400,6 +436,7 @@ export default function AdminPage() {
                           <Badge variant={reward.isActive ? "secondary" : "default"}>
                             {reward.isActive ? "Active" : "Inactive"}
                           </Badge>
+                          <Badge variant="outline">{reward.type}</Badge>
                           <Badge variant="outline">{reward.iconKey || "gift"}</Badge>
                         </div>
                       </div>

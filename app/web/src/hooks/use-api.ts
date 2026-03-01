@@ -8,6 +8,7 @@ import {
   Paginated,
   PredictionRecord,
   RewardCatalogItem,
+  RewardType,
 } from '@/lib/api/types';
 
 export function useUserPoints(userId?: string) {
@@ -246,6 +247,7 @@ export function useCreateReward() {
     mutationFn: async (payload: {
       name: string;
       description?: string;
+      type: RewardType;
       pointsRequired: number;
       iconKey?: string;
       isActive?: boolean;
@@ -269,6 +271,7 @@ export function useUpdateReward() {
       id: string;
       name?: string;
       description?: string;
+      type?: RewardType;
       pointsRequired?: number;
       iconKey?: string;
       isActive?: boolean;
@@ -295,7 +298,13 @@ export function useDeleteReward() {
 export function useRedeemReward() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (payload: { rewardId: string }) => {
+    mutationFn: async (payload: {
+      rewardId: string;
+      phoneNumber?: string;
+      email?: string;
+      fullName?: string;
+      note?: string;
+    }) => {
       const { data } = await api.post('/rewards/redeem', payload);
       return data;
     },
