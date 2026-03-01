@@ -1,4 +1,9 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateMarketDto } from './dto/create-market.dto';
 import { UpdateMarketDto } from './dto/update-market.dto';
@@ -348,6 +353,20 @@ export class MarketsService {
     optionId: string;
     pointsStaked: number;
   }) {
+    const existingPrediction = await this.prisma.prediction.findUnique({
+      where: {
+        userId_marketId: {
+          userId: input.userId,
+          marketId: input.marketId,
+        },
+      },
+    });
+    if (existingPrediction) {
+      throw new ConflictException(
+        'Prediction already submitted for this event',
+      );
+    }
+
     const option = await this.prisma.option.findUnique({
       where: { id: input.optionId },
     });
@@ -358,22 +377,8 @@ export class MarketsService {
       input.pointsStaked,
     );
 
-    const prediction = await this.prisma.prediction.upsert({
-      where: {
-        userId_marketId: {
-          userId: input.userId,
-          marketId: input.marketId,
-        },
-      },
-      update: {
-        optionId: input.optionId,
-        pointsStaked: input.pointsStaked,
-        potentialWinnings,
-        status: 'ACTIVE',
-        isWinning: false,
-        resolvedAt: null,
-      },
-      create: {
+    const prediction = await this.prisma.prediction.create({
+      data: {
         userId: input.userId,
         marketId: input.marketId,
         optionId: input.optionId,

@@ -29,6 +29,7 @@ import {
   useMarkets,
   useSetOdds,
   useUpdateMarket,
+  useUserPredictions,
 } from "@/hooks/use-api";
 
 interface PredictionsFeedProps {
@@ -109,8 +110,14 @@ export default function PredictionsFeed({ selectedCategory, searchTerm }: Predic
   const setOddsMutation = useSetOdds();
   const declareMutation = useDeclareMarket();
   const createPredictionMutation = useCreatePrediction();
+  const userPredictionsQuery = useUserPredictions({
+    userId: user?.id,
+    page: 1,
+    pageSize: 1000,
+  });
 
   const events = marketsQuery.data ?? [];
+  const userPredictions = userPredictionsQuery.data?.items ?? [];
   const [selectedOptions, setSelectedOptions] = useState<Record<string, string>>({});
 
   const [newTitle, setNewTitle] = useState("");
@@ -128,6 +135,10 @@ export default function PredictionsFeed({ selectedCategory, searchTerm }: Predic
   const [editClosesAt, setEditClosesAt] = useState("");
 
   const filteredEvents = useMemo(() => events, [events]);
+  const predictionByEventId = useMemo(
+    () => new Map(userPredictions.map((prediction) => [prediction.eventId, prediction])),
+    [userPredictions]
+  );
 
   const handleCreateEvent = () => {
     if (!user || !newTitle.trim()) return;
@@ -315,7 +326,14 @@ export default function PredictionsFeed({ selectedCategory, searchTerm }: Predic
         )}
 
         <div className="grid gap-4">
-          {filteredEvents.map((event: MarketEvent) => (
+          {filteredEvents.map((event: MarketEvent) => {
+            const existingPrediction = predictionByEventId.get(event.id);
+            const submittedOptionId = existingPrediction?.selectedOptionId;
+            const effectiveSelectedOptionId = submittedOptionId ?? selectedOptions[event.id];
+            const hasSubmittedPrediction = Boolean(existingPrediction);
+            const isOpen = event.status === "OPEN";
+
+            return (
             <Card key={event.id} className="border-border hover:border-primary/50 transition-colors">
               <CardHeader>
                 <div className="flex flex-wrap items-start justify-between gap-4">
@@ -367,14 +385,19 @@ export default function PredictionsFeed({ selectedCategory, searchTerm }: Predic
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {event.options.map((option: EventOption) => {
-                    const selected = selectedOptions[event.id] === option.id;
+                    const selected = effectiveSelectedOptionId === option.id;
                     const potential = calculatePotentialWinnings(option.percentage);
 
                     return (
                       <button
                         key={option.id}
-                        onClick={() => event.status === "OPEN" && setSelectedOptions((prev) => ({ ...prev, [event.id]: option.id }))}
-                        className={`text-left p-3 rounded-lg border-2 transition-all ${selected ? "border-primary bg-primary/10" : "border-border hover:border-primary/50"}`}
+                        disabled={!isOpen || hasSubmittedPrediction}
+                        onClick={() =>
+                          isOpen &&
+                          !hasSubmittedPrediction &&
+                          setSelectedOptions((prev) => ({ ...prev, [event.id]: option.id }))
+                        }
+                        className={`text-left p-3 rounded-lg border-2 transition-all disabled:opacity-70 disabled:cursor-not-allowed ${selected ? "border-primary bg-primary/10" : "border-border hover:border-primary/50"}`}
                       >
                         <div className="font-medium">{option.label}</div>
                         <div className="text-sm text-muted-foreground mt-2 flex items-center justify-between">
@@ -386,7 +409,16 @@ export default function PredictionsFeed({ selectedCategory, searchTerm }: Predic
                   })}
                 </div>
 
-                {event.status === "OPEN" && selectedOptions[event.id] && (
+                {hasSubmittedPrediction && (
+                  <div className="rounded-md border border-primary/40 bg-primary/5 p-3 text-sm">
+                    Prediction submitted:{" "}
+                    <span className="font-semibold">{existingPrediction?.selectedOptionLabel}</span>{" "}
+                    • Potential winnings{" "}
+                    <span className="font-semibold text-primary">{existingPrediction?.potentialWinnings} points</span>
+                  </div>
+                )}
+
+                {isOpen && !hasSubmittedPrediction && effectiveSelectedOptionId && (
                   <Button onClick={() => handleSubmitPrediction(event.id)} className="w-full gap-2">
                     <Zap className="h-4 w-4" /> Submit Prediction
                   </Button>
@@ -412,7 +444,7 @@ export default function PredictionsFeed({ selectedCategory, searchTerm }: Predic
                 )}
               </CardContent>
             </Card>
-          ))}
+          )})}
 
           {filteredEvents.length === 0 && (
             <Card>

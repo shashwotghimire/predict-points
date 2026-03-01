@@ -118,6 +118,9 @@ export function useCreatePrediction() {
     onSuccess: (prediction) => {
       qc.invalidateQueries({ queryKey: ['activity'] });
       qc.invalidateQueries({ queryKey: ['predictions', prediction.eventId] });
+      qc.invalidateQueries({ queryKey: ['user-predictions'] });
+      qc.invalidateQueries({ queryKey: ['market', prediction.eventId] });
+      qc.invalidateQueries({ queryKey: ['markets'] });
     },
   });
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "@/app/contexts/auth-context";
 import { Button } from "@/components/ui/button";
@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { EventOption, MarketEvent } from "@/lib/api/types";
-import { useCreatePrediction, useMarket, usePostComment } from "@/hooks/use-api";
+import { useCreatePrediction, useMarket, usePostComment, useUserPredictions } from "@/hooks/use-api";
 
 const calculatePotentialWinnings = (percentage: number, stake = 100) => {
   if (percentage <= 0) return stake;
@@ -129,8 +129,26 @@ export default function EventDetailPage() {
   const eventQuery = useMarket(eventId);
   const postCommentMutation = usePostComment();
   const createPredictionMutation = useCreatePrediction();
+  const userPredictionsQuery = useUserPredictions({
+    userId: user?.id,
+    page: 1,
+    pageSize: 1000,
+  });
 
   const event = eventQuery.data;
+  const existingPrediction = useMemo(
+    () => userPredictionsQuery.data?.items.find((prediction) => prediction.eventId === eventId),
+    [userPredictionsQuery.data?.items, eventId]
+  );
+  const hasSubmittedPrediction = Boolean(existingPrediction);
+  const isOpen = event?.status === "OPEN";
+
+  useEffect(() => {
+    if (existingPrediction?.selectedOptionId) {
+      setSelectedOptionId(existingPrediction.selectedOptionId);
+    }
+  }, [existingPrediction?.selectedOptionId]);
+
   const selectedOption = useMemo(
     () => event?.options.find((option) => option.id === selectedOptionId),
     [event, selectedOptionId]
@@ -189,14 +207,23 @@ export default function EventDetailPage() {
               {event.options.map((option: EventOption) => (
                 <button
                   key={option.id}
+                  disabled={!isOpen || hasSubmittedPrediction}
                   onClick={() => setSelectedOptionId(option.id)}
-                  className={`text-left rounded-md border p-3 transition-colors ${selectedOptionId === option.id ? "border-primary bg-primary/10" : "border-border hover:border-primary/50"}`}
+                  className={`text-left rounded-md border p-3 transition-colors disabled:cursor-not-allowed disabled:opacity-70 ${selectedOptionId === option.id ? "border-primary bg-primary/10" : "border-border hover:border-primary/50"}`}
                 >
                   <p className="font-medium">{option.label}</p>
                   <p className="text-sm text-muted-foreground mt-1">{option.percentage}% odds • Potential {calculatePotentialWinnings(option.percentage)} points</p>
                 </button>
               ))}
             </div>
+
+            {hasSubmittedPrediction && (
+              <div className="rounded-md border border-primary/40 bg-primary/5 p-3 text-sm">
+                Prediction submitted:{" "}
+                <span className="font-semibold">{existingPrediction?.selectedOptionLabel}</span> • Potential winnings{" "}
+                <span className="font-semibold text-primary">{existingPrediction?.potentialWinnings} points</span>
+              </div>
+            )}
 
             {selectedOption && (
               <div className="rounded-md border border-primary/40 bg-primary/5 p-3 text-sm">
@@ -206,7 +233,7 @@ export default function EventDetailPage() {
             )}
 
             <Button
-              disabled={!user || !selectedOptionId || createPredictionMutation.isPending}
+              disabled={!user || !isOpen || hasSubmittedPrediction || !selectedOptionId || createPredictionMutation.isPending}
               onClick={() => {
                 if (!user || !selectedOptionId) return;
                 createPredictionMutation.mutate(
@@ -219,7 +246,11 @@ export default function EventDetailPage() {
                 );
               }}
             >
-              {createPredictionMutation.isPending ? "Submitting..." : "Submit Prediction"}
+              {hasSubmittedPrediction
+                ? "Prediction Submitted"
+                : createPredictionMutation.isPending
+                  ? "Submitting..."
+                  : "Submit Prediction"}
             </Button>
           </CardContent>
         </Card>
