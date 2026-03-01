@@ -1,13 +1,6 @@
-import { IsInt, IsString, Min } from 'class-validator';
+import { IsString } from 'class-validator';
 
 export class RedeemRewardDto {
   @IsString()
-  userId: string;
-
-  @IsString()
-  rewardName: string;
-
-  @IsInt()
-  @Min(1)
-  pointsSpent: number;
+  rewardId: string;
 }

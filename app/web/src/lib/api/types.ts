@@ -48,6 +48,27 @@ export interface PredictionRecord {
   createdAt: string;
 }
 
+export interface LeaderboardEntry {
+  rank: number;
+  userId: string;
+  username: string;
+  points: number;
+  accuracy: number;
+  wonPredictions: number;
+  resolvedPredictions: number;
+}
+
+export interface RewardCatalogItem {
+  id: string;
+  name: string;
+  description?: string | null;
+  pointsRequired: number;
+  iconKey?: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Paginated<T> {
   items: T[];
   page: number;

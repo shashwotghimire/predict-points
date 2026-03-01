@@ -6,7 +6,17 @@ import { useAuth } from "../contexts/auth-context";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { useActivity, useAdminUsers, useMarkets } from "@/hooks/use-api";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  useActivity,
+  useAdminUsers,
+  useCreateReward,
+  useDeleteReward,
+  useMarkets,
+  useRewardsCatalog,
+  useUpdateReward,
+} from "@/hooks/use-api";
 import AdminNavigation from "../components/admin-navigation";
 
 export default function AdminPage() {
@@ -15,6 +25,18 @@ export default function AdminPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [usersPage, setUsersPage] = useState(1);
   const [marketsPage, setMarketsPage] = useState(1);
+  const [rewardsPage, setRewardsPage] = useState(1);
+  const [newRewardName, setNewRewardName] = useState("");
+  const [newRewardDescription, setNewRewardDescription] = useState("");
+  const [newRewardPoints, setNewRewardPoints] = useState(100);
+  const [newRewardIconKey, setNewRewardIconKey] = useState("gift");
+  const [editingRewardId, setEditingRewardId] = useState<string | null>(null);
+  const [editRewardName, setEditRewardName] = useState("");
+  const [editRewardDescription, setEditRewardDescription] = useState("");
+  const [editRewardPoints, setEditRewardPoints] = useState(100);
+  const [editRewardIconKey, setEditRewardIconKey] = useState("gift");
+  const [editRewardActive, setEditRewardActive] = useState(true);
+  const [rewardError, setRewardError] = useState<string | null>(null);
   const PAGE_SIZE = 8;
 
   useEffect(() => {
@@ -31,6 +53,15 @@ export default function AdminPage() {
   const marketsQuery = useMarkets({});
   const activityQuery = useActivity();
   const usersQuery = useAdminUsers(Boolean(user && ["ADMIN", "SUPER_ADMIN"].includes(user.role)));
+  const rewardsQuery = useRewardsCatalog({
+    search: searchTerm || undefined,
+    includeInactive: true,
+    page: rewardsPage,
+    pageSize: PAGE_SIZE,
+  });
+  const createRewardMutation = useCreateReward();
+  const updateRewardMutation = useUpdateReward();
+  const deleteRewardMutation = useDeleteReward();
 
   if (isLoading || !user) {
     return (
@@ -50,6 +81,8 @@ export default function AdminPage() {
   const markets = marketsQuery.data ?? [];
   const activity = activityQuery.data ?? [];
   const users = usersQuery.data ?? [];
+  const rewards = rewardsQuery.data?.items ?? [];
+  const rewardsPageCount = rewardsQuery.data?.pageCount ?? 1;
   const normalizedSearch = searchTerm.trim().toLowerCase();
 
   const filteredMarkets = useMemo(() => {
@@ -75,6 +108,7 @@ export default function AdminPage() {
   useEffect(() => {
     setUsersPage(1);
     setMarketsPage(1);
+    setRewardsPage(1);
   }, [normalizedSearch]);
 
   const usersPageCount = Math.max(1, Math.ceil(filteredUsers.length / PAGE_SIZE));
@@ -85,6 +119,77 @@ export default function AdminPage() {
 
   const openMarkets = filteredMarkets.filter((entry) => entry.status === "OPEN").length;
   const resolvedMarkets = filteredMarkets.length - openMarkets;
+
+  const handleCreateReward = async () => {
+    setRewardError(null);
+    if (!newRewardName.trim()) {
+      setRewardError("Reward name is required.");
+      return;
+    }
+    if (!Number.isFinite(newRewardPoints) || newRewardPoints < 1) {
+      setRewardError("Points required must be at least 1.");
+      return;
+    }
+
+    try {
+      await createRewardMutation.mutateAsync({
+        name: newRewardName.trim(),
+        description: newRewardDescription.trim() || undefined,
+        pointsRequired: Math.floor(newRewardPoints),
+        iconKey: newRewardIconKey.trim() || undefined,
+        isActive: true,
+      });
+      setNewRewardName("");
+      setNewRewardDescription("");
+      setNewRewardPoints(100);
+      setNewRewardIconKey("gift");
+    } catch {
+      setRewardError("Failed to create reward.");
+    }
+  };
+
+  const handleStartRewardEdit = (reward: {
+    id: string;
+    name: string;
+    description?: string | null;
+    pointsRequired: number;
+    iconKey?: string | null;
+    isActive: boolean;
+  }) => {
+    setEditingRewardId(reward.id);
+    setEditRewardName(reward.name);
+    setEditRewardDescription(reward.description ?? "");
+    setEditRewardPoints(reward.pointsRequired);
+    setEditRewardIconKey(reward.iconKey ?? "gift");
+    setEditRewardActive(reward.isActive);
+    setRewardError(null);
+  };
+
+  const handleSaveRewardEdit = async (rewardId: string) => {
+    setRewardError(null);
+    if (!editRewardName.trim()) {
+      setRewardError("Reward name is required.");
+      return;
+    }
+    if (!Number.isFinite(editRewardPoints) || editRewardPoints < 1) {
+      setRewardError("Points required must be at least 1.");
+      return;
+    }
+
+    try {
+      await updateRewardMutation.mutateAsync({
+        id: rewardId,
+        name: editRewardName.trim(),
+        description: editRewardDescription.trim() || undefined,
+        pointsRequired: Math.floor(editRewardPoints),
+        iconKey: editRewardIconKey.trim() || undefined,
+        isActive: editRewardActive,
+      });
+      setEditingRewardId(null);
+    } catch {
+      setRewardError("Failed to update reward.");
+    }
+  };
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -99,7 +204,7 @@ export default function AdminPage() {
           <Button variant="outline" onClick={() => router.push("/dashboard")}>Back to Dashboard</Button>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-5">
           <Card>
             <CardHeader><CardTitle>Total Markets</CardTitle></CardHeader>
             <CardContent><p className="text-3xl font-bold">{filteredMarkets.length}</p></CardContent>
@@ -115,6 +220,10 @@ export default function AdminPage() {
           <Card>
             <CardHeader><CardTitle>Resolved Markets</CardTitle></CardHeader>
             <CardContent><p className="text-3xl font-bold">{resolvedMarkets}</p></CardContent>
+          </Card>
+          <Card>
+            <CardHeader><CardTitle>Rewards</CardTitle></CardHeader>
+            <CardContent><p className="text-3xl font-bold">{rewardsQuery.data?.total ?? rewards.length}</p></CardContent>
           </Card>
         </div>
 
@@ -200,6 +309,162 @@ export default function AdminPage() {
             </CardContent>
           </Card>
         </div>
+
+        <Card>
+          <CardHeader><CardTitle>Rewards Manager</CardTitle></CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid gap-3 md:grid-cols-4">
+              <div className="space-y-2">
+                <Label htmlFor="reward-name">Name</Label>
+                <Input
+                  id="reward-name"
+                  value={newRewardName}
+                  onChange={(event) => setNewRewardName(event.target.value)}
+                  placeholder="Mobile Top-up"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="reward-description">Description</Label>
+                <Input
+                  id="reward-description"
+                  value={newRewardDescription}
+                  onChange={(event) => setNewRewardDescription(event.target.value)}
+                  placeholder="NPR 500 mobile credit"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="reward-points">Points</Label>
+                <Input
+                  id="reward-points"
+                  type="number"
+                  min={1}
+                  value={newRewardPoints}
+                  onChange={(event) => setNewRewardPoints(Number(event.target.value) || 0)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="reward-icon">Icon Key</Label>
+                <Input
+                  id="reward-icon"
+                  value={newRewardIconKey}
+                  onChange={(event) => setNewRewardIconKey(event.target.value)}
+                  placeholder="gift | smartphone | coffee"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end">
+              <Button onClick={handleCreateReward} disabled={createRewardMutation.isPending}>
+                {createRewardMutation.isPending ? "Creating..." : "Create Reward"}
+              </Button>
+            </div>
+
+            {rewardError ? <p className="text-sm text-destructive">{rewardError}</p> : null}
+
+            <div className="space-y-2">
+              {rewardsQuery.isLoading ? (
+                <p className="text-sm text-muted-foreground">Loading rewards...</p>
+              ) : rewards.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No rewards found.</p>
+              ) : (
+                rewards.map((reward) => (
+                  <div key={reward.id} className="rounded-md border border-border p-3 space-y-3">
+                    {editingRewardId === reward.id ? (
+                      <div className="grid gap-2 md:grid-cols-5">
+                        <Input value={editRewardName} onChange={(event) => setEditRewardName(event.target.value)} />
+                        <Input value={editRewardDescription} onChange={(event) => setEditRewardDescription(event.target.value)} />
+                        <Input
+                          type="number"
+                          min={1}
+                          value={editRewardPoints}
+                          onChange={(event) => setEditRewardPoints(Number(event.target.value) || 0)}
+                        />
+                        <Input value={editRewardIconKey} onChange={(event) => setEditRewardIconKey(event.target.value)} />
+                        <select
+                          value={editRewardActive ? "active" : "inactive"}
+                          onChange={(event) => setEditRewardActive(event.target.value === "active")}
+                          className="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
+                        >
+                          <option value="active">Active</option>
+                          <option value="inactive">Inactive</option>
+                        </select>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-between gap-3 flex-wrap">
+                        <div>
+                          <p className="font-medium">{reward.name}</p>
+                          <p className="text-sm text-muted-foreground">{reward.description || "No description"}</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline">{reward.pointsRequired} pts</Badge>
+                          <Badge variant={reward.isActive ? "secondary" : "default"}>
+                            {reward.isActive ? "Active" : "Inactive"}
+                          </Badge>
+                          <Badge variant="outline">{reward.iconKey || "gift"}</Badge>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="flex items-center justify-end gap-2">
+                      {editingRewardId === reward.id ? (
+                        <>
+                          <Button
+                            size="sm"
+                            onClick={() => handleSaveRewardEdit(reward.id)}
+                            disabled={updateRewardMutation.isPending}
+                          >
+                            Save
+                          </Button>
+                          <Button size="sm" variant="outline" onClick={() => setEditingRewardId(null)}>
+                            Cancel
+                          </Button>
+                        </>
+                      ) : (
+                        <>
+                          <Button size="sm" variant="outline" onClick={() => handleStartRewardEdit(reward)}>
+                            Edit
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            onClick={() => deleteRewardMutation.mutate(reward.id)}
+                            disabled={deleteRewardMutation.isPending}
+                          >
+                            Delete
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {rewards.length > 0 ? (
+              <div className="flex items-center justify-end gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={rewardsPage <= 1}
+                  onClick={() => setRewardsPage((page) => page - 1)}
+                >
+                  Previous
+                </Button>
+                <span className="text-xs text-muted-foreground">
+                  Page {rewardsPage} of {rewardsPageCount}
+                </span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={rewardsPage >= rewardsPageCount}
+                  onClick={() => setRewardsPage((page) => page + 1)}
+                >
+                  Next
+                </Button>
+              </div>
+            ) : null}
+          </CardContent>
+        </Card>
 
         <Card>
           <CardHeader><CardTitle>Recent Activity</CardTitle></CardHeader>

@@ -93,6 +93,21 @@ model User {
   rewardRedemptions RewardRedemption[]
 }
 
+model Reward {
+  id             String             @id @default(cuid())
+  name           String
+  description    String?
+  pointsRequired Int
+  iconKey        String?
+  isActive       Boolean            @default(true)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  redemptions RewardRedemption[]
+
+  @@index([isActive, createdAt])
+}
+
 model Market {
   id               String           @id @default(cuid())
   title            String
@@ -220,14 +235,17 @@ model ActivityLog {
 model RewardRedemption {
   id          String       @id @default(uuid())
   userId      String
+  rewardId    String?
   rewardName  String
   pointsSpent Int
   status      RewardStatus @default(REDEEMED)
   createdAt   DateTime     @default(now())
 
-  user User @relation(fields: [userId], references: [id])
+  user   User    @relation(fields: [userId], references: [id])
+  reward Reward? @relation(fields: [rewardId], references: [id], onDelete: SetNull)
 
   @@index([userId, createdAt])
+  @@index([rewardId])
 }
 
 model PointTransaction {

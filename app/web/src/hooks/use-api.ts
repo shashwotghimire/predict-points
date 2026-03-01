@@ -1,7 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api/client';
 import { mapMarket, mapPrediction } from '@/lib/api/mappers';
-import { EventOption, MarketEvent, Paginated, PredictionRecord } from '@/lib/api/types';
+import {
+  EventOption,
+  LeaderboardEntry,
+  MarketEvent,
+  Paginated,
+  PredictionRecord,
+  RewardCatalogItem,
+} from '@/lib/api/types';
 
 export function useUserPoints(userId?: string) {
   return useQuery({
@@ -215,16 +222,87 @@ export function useUserRewards(params: {
   });
 }
 
+export function useRewardsCatalog(params?: {
+  search?: string;
+  includeInactive?: boolean;
+  page?: number;
+  pageSize?: number;
+}) {
+  return useQuery({
+    queryKey: ['rewards-catalog', params],
+    queryFn: async () => {
+      const { data } = await api.get('/rewards/catalog', {
+        params,
+      });
+      return data as Paginated<RewardCatalogItem>;
+    },
+    refetchInterval: 4000,
+  });
+}
+
+export function useCreateReward() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (payload: {
+      name: string;
+      description?: string;
+      pointsRequired: number;
+      iconKey?: string;
+      isActive?: boolean;
+    }) => {
+      const { data } = await api.post('/rewards', payload);
+      return data as RewardCatalogItem;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['rewards-catalog'] });
+    },
+  });
+}
+
+export function useUpdateReward() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      id,
+      ...payload
+    }: {
+      id: string;
+      name?: string;
+      description?: string;
+      pointsRequired?: number;
+      iconKey?: string;
+      isActive?: boolean;
+    }) => {
+      const { data } = await api.patch(`/rewards/${id}`, payload);
+      return data as RewardCatalogItem;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['rewards-catalog'] });
+    },
+  });
+}
+
+export function useDeleteReward() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => api.delete(`/rewards/${id}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['rewards-catalog'] });
+    },
+  });
+}
+
 export function useRedeemReward() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (payload: { userId: string; rewardName: string; pointsSpent: number }) => {
+    mutationFn: async (payload: { rewardId: string }) => {
       const { data } = await api.post('/rewards/redeem', payload);
       return data;
     },
-    onSuccess: (_, vars) => {
-      qc.invalidateQueries({ queryKey: ['user-points', vars.userId] });
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['user-points'] });
       qc.invalidateQueries({ queryKey: ['user-rewards'] });
+      qc.invalidateQueries({ queryKey: ['rewards-catalog'] });
       qc.invalidateQueries({ queryKey: ['activity'] });
     },
   });
@@ -244,6 +322,19 @@ export function useAdminUsers(enabled = true) {
         points: number;
         createdAt: string;
       }>;
+    },
+  });
+}
+
+export function useLeaderboard(limit = 20) {
+  return useQuery({
+    queryKey: ['leaderboard', limit],
+    refetchInterval: 4000,
+    queryFn: async () => {
+      const { data } = await api.get('/users/leaderboard', {
+        params: { limit },
+      });
+      return data as LeaderboardEntry[];
     },
   });
 }

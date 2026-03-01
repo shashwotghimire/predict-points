@@ -6,53 +6,29 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Gift, Smartphone, Coffee, AlertCircle } from "lucide-react";
 import { useAuth } from "../contexts/auth-context";
-import { useRedeemReward } from "@/hooks/use-api";
+import { useRedeemReward, useRewardsCatalog } from "@/hooks/use-api";
 
 interface RewardsMarketplaceProps {
   userPoints: number;
 }
 
-const mockRewards = [
-  {
-    id: 1,
-    name: "Mobile Top-up",
-    description: "$10 credit for your phone carrier",
-    pointsRequired: 250,
-    icon: Smartphone,
-    status: "available",
-  },
-  {
-    id: 2,
-    name: "Food Discount",
-    description: "20% off at local restaurants",
-    pointsRequired: 180,
-    icon: Gift,
-    status: "available",
-  },
-  {
-    id: 3,
-    name: "Coffee Voucher",
-    description: "$5 credit at premium coffee shops",
-    pointsRequired: 120,
-    icon: Coffee,
-    status: "available",
-  },
-  {
-    id: 4,
-    name: "Movie Tickets",
-    description: "2 cinema tickets of your choice",
-    pointsRequired: 350,
-    icon: Gift,
-    status: "coming-soon",
-  },
-];
+const iconByKey: Record<string, typeof Gift> = {
+  smartphone: Smartphone,
+  gift: Gift,
+  coffee: Coffee,
+};
 
 export default function RewardsMarketplace({
   userPoints,
 }: RewardsMarketplaceProps) {
   const { user } = useAuth();
   const [message, setMessage] = useState("");
+  const rewardsQuery = useRewardsCatalog({
+    page: 1,
+    pageSize: 100,
+  });
   const redeemMutation = useRedeemReward();
+  const rewards = rewardsQuery.data?.items ?? [];
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
@@ -79,18 +55,29 @@ export default function RewardsMarketplace({
           </CardContent>
         </Card>
 
+        {rewardsQuery.isLoading ? (
+          <Card>
+            <CardContent className="py-10 text-center text-muted-foreground">
+              Loading rewards...
+            </CardContent>
+          </Card>
+        ) : rewardsQuery.isError ? (
+          <Card>
+            <CardContent className="py-10 text-center text-destructive">
+              Could not load rewards.
+            </CardContent>
+          </Card>
+        ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {mockRewards.map((reward) => {
-            const Icon = reward.icon;
-            const canRedeem =
-              userPoints >= reward.pointsRequired &&
-              reward.status === "available";
+          {rewards.map((reward) => {
+            const Icon = iconByKey[(reward.iconKey || "").toLowerCase()] || Gift;
+            const canRedeem = userPoints >= reward.pointsRequired && reward.isActive;
 
             return (
               <Card
                 key={reward.id}
                 className={`flex flex-col ${
-                  reward.status === "coming-soon" ? "opacity-60" : ""
+                  !reward.isActive ? "opacity-60" : ""
                 } border-border`}
               >
                 <CardHeader>
@@ -103,9 +90,9 @@ export default function RewardsMarketplace({
                         <CardTitle className="text-base">{reward.name}</CardTitle>
                       </div>
                     </div>
-                    {reward.status === "coming-soon" && (
+                    {!reward.isActive && (
                       <Badge variant="secondary" className="shrink-0">
-                        Coming Soon
+                        Inactive
                       </Badge>
                     )}
                   </div>
@@ -126,7 +113,7 @@ export default function RewardsMarketplace({
                       </span>
                     </div>
 
-                    {reward.status === "available" ? (
+                    {reward.isActive ? (
                       <Button
                         disabled={!canRedeem}
                         className={`w-full ${
@@ -136,13 +123,10 @@ export default function RewardsMarketplace({
                         }`}
                         onClick={() => {
                           if (!user) return;
-                          if (!user) return;
                           redeemMutation.mutate({
-                            userId: user.id,
-                            rewardName: reward.name,
-                            pointsSpent: reward.pointsRequired,
+                            rewardId: reward.id,
                           });
-                          setMessage(`Redeemed ${reward.name}. Refresh dashboard to see updated points.`);
+                          setMessage(`Redeemed ${reward.name}.`);
                         }}
                       >
                         {canRedeem ? "Redeem Now" : "Not Enough Points"}
@@ -153,7 +137,7 @@ export default function RewardsMarketplace({
                         variant="outline"
                         className="w-full bg-transparent"
                       >
-                        Coming Soon
+                        Inactive
                       </Button>
                     )}
                   </div>
@@ -161,7 +145,15 @@ export default function RewardsMarketplace({
               </Card>
             );
           })}
+          {rewards.length === 0 && (
+            <Card className="md:col-span-2 lg:col-span-3">
+              <CardContent className="py-10 text-center text-muted-foreground">
+                No rewards available yet.
+              </CardContent>
+            </Card>
+          )}
         </div>
+        )}
       </div>
     </div>
   );

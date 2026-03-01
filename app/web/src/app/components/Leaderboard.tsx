@@ -1,74 +1,23 @@
+"use client";
+
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Trophy, TrendingUp } from "lucide-react";
-
-const mockLeaderboard = [
-  {
-    rank: 1,
-    username: "DataDriven",
-    accuracy: "78%",
-    points: 4280,
-    isCurrentUser: false,
-  },
-  {
-    rank: 2,
-    username: "PredictPro",
-    accuracy: "75%",
-    points: 3950,
-    isCurrentUser: false,
-  },
-  {
-    rank: 3,
-    username: "You",
-    accuracy: "72%",
-    points: 3620,
-    isCurrentUser: true,
-  },
-  {
-    rank: 4,
-    username: "MarketWatcher",
-    accuracy: "71%",
-    points: 3410,
-    isCurrentUser: false,
-  },
-  {
-    rank: 5,
-    username: "ForecastMaster",
-    accuracy: "69%",
-    points: 3210,
-    isCurrentUser: false,
-  },
-  {
-    rank: 6,
-    username: "AnalysisKing",
-    accuracy: "68%",
-    points: 2980,
-    isCurrentUser: false,
-  },
-  {
-    rank: 7,
-    username: "TrendTracker",
-    accuracy: "67%",
-    points: 2750,
-    isCurrentUser: false,
-  },
-  {
-    rank: 8,
-    username: "InsightHunter",
-    accuracy: "65%",
-    points: 2490,
-    isCurrentUser: false,
-  },
-];
+import { useAuth } from "../contexts/auth-context";
+import { useLeaderboard } from "@/hooks/use-api";
 
 export default function Leaderboard() {
+  const { user } = useAuth();
+  const leaderboardQuery = useLeaderboard(25);
+  const leaderboard = leaderboardQuery.data ?? [];
+
   return (
     <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:px-8">
       <div className="space-y-6">
         <div>
-          <h1 className="text-3xl font-bold">Weekly Leaderboard</h1>
+          <h1 className="text-3xl font-bold">Leaderboard</h1>
           <p className="text-muted-foreground mt-2">
-            Top predictors based on accuracy and total points
+            Top predictors based on total points and resolved accuracy
           </p>
         </div>
 
@@ -81,43 +30,54 @@ export default function Leaderboard() {
           </CardHeader>
 
           <CardContent>
-            <div className="space-y-0">
-              {mockLeaderboard.map((entry) => (
-                <div
-                  key={entry.rank}
-                  className={`flex items-center justify-between p-4 border-b border-border last:border-b-0 ${
-                    entry.isCurrentUser ? "bg-primary/5" : ""
-                  }`}
-                >
-                  <div className="flex items-center gap-4 flex-1">
-                    <div className="text-2xl font-bold text-muted-foreground w-8 text-right">
-                      <span>{entry.rank}</span>
-                    </div>
-                    <div>
-                      <p className="font-semibold">
-                        {entry.username}
-                        {entry.isCurrentUser && (
-                          <Badge variant="outline" className="ml-2 text-xs">
-                            You
-                          </Badge>
-                        )}
-                      </p>
-                      <p className="text-sm text-muted-foreground flex items-center gap-1">
-                        <TrendingUp className="w-3 h-3" />
-                        {entry.accuracy} accuracy
-                      </p>
-                    </div>
-                  </div>
+            {leaderboardQuery.isLoading ? (
+              <p className="text-sm text-muted-foreground">Loading leaderboard...</p>
+            ) : leaderboardQuery.isError ? (
+              <p className="text-sm text-destructive">Could not load leaderboard right now.</p>
+            ) : leaderboard.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No leaderboard data yet.</p>
+            ) : (
+              <div className="space-y-0">
+                {leaderboard.map((entry) => {
+                  const isCurrentUser = entry.userId === user?.id;
+                  return (
+                    <div
+                      key={entry.userId}
+                      className={`flex items-center justify-between border-b border-border p-4 last:border-b-0 ${
+                        isCurrentUser ? "bg-primary/5" : ""
+                      }`}
+                    >
+                      <div className="flex flex-1 items-center gap-4">
+                        <div className="w-8 text-right text-2xl font-bold text-muted-foreground">
+                          <span>{entry.rank}</span>
+                        </div>
+                        <div>
+                          <p className="font-semibold">
+                            {entry.username}
+                            {isCurrentUser ? (
+                              <Badge variant="outline" className="ml-2 text-xs">
+                                You
+                              </Badge>
+                            ) : null}
+                          </p>
+                          <p className="flex items-center gap-1 text-sm text-muted-foreground">
+                            <TrendingUp className="h-3 w-3" />
+                            {entry.accuracy}% accuracy ({entry.wonPredictions}/{entry.resolvedPredictions} resolved won)
+                          </p>
+                        </div>
+                      </div>
 
-                  <div className="text-right">
-                    <p className="font-semibold text-lg text-primary">
-                      {entry.points.toLocaleString()}
-                    </p>
-                    <p className="text-xs text-muted-foreground">points</p>
-                  </div>
-                </div>
-              ))}
-            </div>
+                      <div className="text-right">
+                        <p className="text-lg font-semibold text-primary">
+                          {entry.points.toLocaleString()}
+                        </p>
+                        <p className="text-xs text-muted-foreground">points</p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
