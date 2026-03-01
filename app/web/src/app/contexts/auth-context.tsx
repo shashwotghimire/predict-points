@@ -6,6 +6,7 @@ import { createContext, useContext, useMemo, useSyncExternalStore } from "react"
 import { usePathname } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api/client";
+import { clearAuthTokens, setAuthTokens } from "@/lib/api/client";
 
 export type UserRole = "ADMIN" | "USER" | "SUPER_ADMIN" | "MODERATOR";
 
@@ -15,6 +16,12 @@ export interface User {
   name: string;
   role: UserRole;
   profilePicture?: string;
+}
+
+interface AuthApiResponse {
+  user: User;
+  accessToken?: string;
+  refreshToken?: string;
 }
 
 interface AuthContextType {
@@ -80,16 +87,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const { data } = await api.post("/auth/login", {
           email: payload.email,
           password: payload.password,
+        }, {
+          params: { transport: "body" },
+          headers: { "x-auth-transport": "body" },
         });
-        return data as { user: User };
+        return data as AuthApiResponse;
       }
 
       const { data } = await api.post("/auth/register", {
         email: payload.email,
         password: payload.password,
         name: payload.name,
+      }, {
+        params: { transport: "body" },
+        headers: { "x-auth-transport": "body" },
       });
-      return data as { user: User };
+      return data as AuthApiResponse;
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["auth", "me"] });
@@ -97,11 +110,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   });
 
   const login = async (email: string, password: string) => {
-    await authMutation.mutateAsync({ mode: "login", email, password });
+    const result = await authMutation.mutateAsync({ mode: "login", email, password });
+    setAuthTokens({
+      accessToken: result.accessToken ?? null,
+      refreshToken: result.refreshToken ?? null,
+    });
   };
 
   const register = async (email: string, password: string, name: string) => {
-    await authMutation.mutateAsync({ mode: "register", email, password, name });
+    const result = await authMutation.mutateAsync({ mode: "register", email, password, name });
+    setAuthTokens({
+      accessToken: result.accessToken ?? null,
+      refreshToken: result.refreshToken ?? null,
+    });
   };
 
   const startGoogleLogin = () => {
@@ -109,13 +130,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       process.env.NEXT_PUBLIC_API_BASE_URL ||
       process.env.NEXT_PUBLIC_API_URL ||
       "http://localhost:3001";
-    window.location.href = `${base.replace(/\/$/, "")}/api/v1/auth/google/start`;
+    window.location.href = `${base.replace(/\/$/, "")}/api/v1/auth/google/start?transport=body`;
   };
 
   const logout = async () => {
     try {
       await api.post("/auth/logout");
     } finally {
+      clearAuthTokens();
       queryClient.setQueryData(["auth", "me"], null);
       queryClient.invalidateQueries({ queryKey: ["auth"] });
     }
