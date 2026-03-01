@@ -28,8 +28,8 @@ interface AuthApiResponse {
 interface AuthContextType {
   user: User | null;
   isLoading: boolean;
-  login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string, name: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<User>;
+  register: (email: string, password: string, name: string) => Promise<User>;
   startGoogleLogin: () => void;
   logout: () => Promise<void>;
   updateProfile: (name: string, profilePicture?: string) => void;
@@ -53,6 +53,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     pathname === "/" ||
     pathname === "/landing" ||
     pathname === "/login" ||
+    pathname === "/admin/login" ||
     pathname === "/register";
 
   const meQuery = useQuery({
@@ -134,6 +135,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       accessToken: result.accessToken ?? null,
       refreshToken: result.refreshToken ?? null,
     });
+    return result.user;
   };
 
   const register = async (email: string, password: string, name: string) => {
@@ -142,6 +144,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       accessToken: result.accessToken ?? null,
       refreshToken: result.refreshToken ?? null,
     });
+    return result.user;
   };
 
   const startGoogleLogin = () => {

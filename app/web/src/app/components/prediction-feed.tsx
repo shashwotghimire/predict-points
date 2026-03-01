@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -51,12 +51,15 @@ const marketTypeLabels: Record<MarketType, string> = {
   OVER_UNDER: "Over / Under",
 };
 
+type OptionDraft = { label: string; percentage: number };
+type EditOptionDraft = { id: string; label: string; percentage: number };
+
 const calculatePotentialWinnings = (percentage: number, stake = BASE_STAKE_POINTS) => {
   if (percentage <= 0) return stake;
   return Math.round((stake * 100) / percentage);
 };
 
-const buildOptionsByType = (marketType: MarketType, threshold: string) => {
+const createOptionDraftsByType = (marketType: MarketType, threshold: string): OptionDraft[] => {
   switch (marketType) {
     case "YES_NO":
       return [
@@ -80,28 +83,16 @@ const buildOptionsByType = (marketType: MarketType, threshold: string) => {
   }
 };
 
-const normalizePercentages = (options: { label: string; percentage: number }[]) => {
-  const total = options.reduce((sum, option) => sum + option.percentage, 0);
-  if (!total) return options;
-  const normalized = options.map((option) => ({
-    ...option,
-    percentage: Math.max(1, Math.round((option.percentage / total) * 100)),
-  }));
-  const normalizedTotal = normalized.reduce((sum, option) => sum + option.percentage, 0);
-  if (normalizedTotal !== 100) {
-    normalized[0].percentage += 100 - normalizedTotal;
-  }
-  return normalized;
-};
-
 export default function PredictionsFeed({ selectedCategory, searchTerm }: PredictionsFeedProps) {
   const { user } = useAuth();
   const router = useRouter();
-  const isAdmin = user?.role === "ADMIN";
+  const isAdmin = user?.role === "ADMIN" || user?.role === "SUPER_ADMIN";
+  const canSubmitPredictions = user?.role === "USER";
 
   const marketsQuery = useMarkets({
     category: selectedCategory.toUpperCase(),
     search: searchTerm || undefined,
+    status: "OPEN",
   });
 
   const createMarketMutation = useCreateMarket();
@@ -111,7 +102,7 @@ export default function PredictionsFeed({ selectedCategory, searchTerm }: Predic
   const declareMutation = useDeclareMarket();
   const createPredictionMutation = useCreatePrediction();
   const userPredictionsQuery = useUserPredictions({
-    userId: user?.id,
+    userId: canSubmitPredictions ? user?.id : undefined,
     page: 1,
     pageSize: 1000,
   });
@@ -125,14 +116,19 @@ export default function PredictionsFeed({ selectedCategory, searchTerm }: Predic
   const [newCategory, setNewCategory] = useState<EventCategory>("trending");
   const [newMarketType, setNewMarketType] = useState<MarketType>("YES_NO");
   const [overUnderThreshold, setOverUnderThreshold] = useState("2.5");
-  const [customOptionsText, setCustomOptionsText] = useState("");
+  const [newOptions, setNewOptions] = useState<OptionDraft[]>(
+    createOptionDraftsByType("YES_NO", "2.5")
+  );
   const [newClosesAt, setNewClosesAt] = useState("");
   const [newIcon, setNewIcon] = useState<string | undefined>(undefined);
+  const [createEventError, setCreateEventError] = useState<string | null>(null);
 
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [editDescription, setEditDescription] = useState("");
   const [editClosesAt, setEditClosesAt] = useState("");
+  const [editOptions, setEditOptions] = useState<EditOptionDraft[]>([]);
+  const [editError, setEditError] = useState<string | null>(null);
 
   const filteredEvents = useMemo(() => events, [events]);
   const predictionByEventId = useMemo(
@@ -140,28 +136,56 @@ export default function PredictionsFeed({ selectedCategory, searchTerm }: Predic
     [userPredictions]
   );
 
+  useEffect(() => {
+    setNewOptions(createOptionDraftsByType(newMarketType, overUnderThreshold));
+  }, [newMarketType]);
+
+  useEffect(() => {
+    if (newMarketType !== "OVER_UNDER") return;
+    const line = overUnderThreshold.trim() || "2.5";
+    setNewOptions((prev) => {
+      if (prev.length !== 2) return createOptionDraftsByType("OVER_UNDER", line);
+      return [
+        { ...prev[0], label: `Over ${line}` },
+        { ...prev[1], label: `Under ${line}` },
+      ];
+    });
+  }, [newMarketType, overUnderThreshold]);
+
+  const updateCreateOption = (index: number, field: "label" | "percentage", value: string) => {
+    setNewOptions((prev) =>
+      prev.map((option, optionIndex) => {
+        if (optionIndex !== index) return option;
+        if (field === "label") return { ...option, label: value };
+        const parsed = Number(value);
+        return { ...option, percentage: Number.isFinite(parsed) ? parsed : 0 };
+      })
+    );
+  };
+
   const handleCreateEvent = () => {
     if (!user || !newTitle.trim()) return;
+    setCreateEventError(null);
+    const options = newOptions.map((option) => ({
+      label: option.label.trim(),
+      percentage: Number(option.percentage),
+    }));
 
-    const parsedCustomOptions = customOptionsText
-      .split(",")
-      .map((raw) => {
-        const [labelRaw, pctRaw] = raw.split(":");
-        const label = labelRaw?.trim();
-        if (!label) return null;
-        const parsedPct = Number(pctRaw?.trim());
-        return {
-          label,
-          percentage: Number.isNaN(parsedPct) ? 0 : parsedPct,
-        };
-      })
-      .filter((item): item is { label: string; percentage: number } => Boolean(item));
+    if (options.some((option) => !option.label)) {
+      setCreateEventError("All option labels are required.");
+      return;
+    }
 
-    const options = normalizePercentages(
-      parsedCustomOptions.length > 0
-        ? parsedCustomOptions
-        : buildOptionsByType(newMarketType, overUnderThreshold)
-    );
+    if (options.some((option) => !Number.isFinite(option.percentage) || option.percentage <= 0)) {
+      setCreateEventError("Each option needs an initial odds value greater than 0.");
+      return;
+    }
+
+    const totalOdds = Math.round(options.reduce((sum, option) => sum + option.percentage, 0) * 100) / 100;
+    if (totalOdds !== 100) {
+      setCreateEventError("Initial odds must sum to exactly 100.");
+      return;
+    }
 
     createMarketMutation.mutate({
       title: newTitle.trim(),
@@ -178,25 +202,81 @@ export default function PredictionsFeed({ selectedCategory, searchTerm }: Predic
 
     setNewTitle("");
     setNewDescription("");
-    setCustomOptionsText("");
+    setNewOptions(createOptionDraftsByType(newMarketType, overUnderThreshold));
     setNewIcon(undefined);
   };
 
   const handleStartEdit = (event: MarketEvent) => {
     setEditingEventId(event.id);
+    setEditError(null);
     setEditTitle(event.title);
     setEditDescription(event.description);
     setEditClosesAt(event.closesAt.slice(0, 16));
+    setEditOptions(
+      event.options.map((option) => ({
+        id: option.id,
+        label: option.label,
+        percentage: option.percentage,
+      }))
+    );
   };
 
-  const handleSaveEdit = (eventId: string) => {
-    updateMarketMutation.mutate({
-      id: eventId,
-      title: editTitle,
-      description: editDescription,
-      closesAt: new Date(editClosesAt).toISOString(),
-    });
-    setEditingEventId(null);
+  const handleUpdateEditOption = (
+    optionId: string,
+    field: "label" | "percentage",
+    value: string
+  ) => {
+    setEditOptions((prev) =>
+      prev.map((option) => {
+        if (option.id !== optionId) return option;
+        if (field === "label") return { ...option, label: value };
+        const parsed = Number(value);
+        return { ...option, percentage: Number.isFinite(parsed) ? parsed : 0 };
+      })
+    );
+  };
+
+  const handleSaveEdit = async (eventId: string) => {
+    setEditError(null);
+
+    const optionPayload = editOptions.map((option) => ({
+      id: option.id,
+      label: option.label.trim(),
+      percentage: Number(option.percentage),
+    }));
+
+    if (optionPayload.some((option) => !option.label)) {
+      setEditError("All option labels are required.");
+      return;
+    }
+    if (optionPayload.some((option) => option.percentage <= 0 || !Number.isFinite(option.percentage))) {
+      setEditError("Each option needs an odds value greater than 0.");
+      return;
+    }
+
+    const total = Math.round(optionPayload.reduce((sum, option) => sum + option.percentage, 0) * 100) / 100;
+    if (total !== 100) {
+      setEditError("Option odds must sum to exactly 100.");
+      return;
+    }
+
+    try {
+      await updateMarketMutation.mutateAsync({
+        id: eventId,
+        title: editTitle,
+        description: editDescription,
+        closesAt: new Date(editClosesAt).toISOString(),
+      });
+
+      await setOddsMutation.mutateAsync({
+        id: eventId,
+        options: optionPayload,
+      });
+
+      setEditingEventId(null);
+    } catch {
+      setEditError("Could not save event changes. Please try again.");
+    }
   };
 
   const handleSetEqualOdds = (event: MarketEvent) => {
@@ -221,13 +301,12 @@ export default function PredictionsFeed({ selectedCategory, searchTerm }: Predic
   };
 
   const handleSubmitPrediction = (eventId: string) => {
-    if (!user) return;
+    if (!user || !canSubmitPredictions) return;
     const optionId = selectedOptions[eventId];
     if (!optionId) return;
 
     createPredictionMutation.mutate(
       {
-        userId: user.id,
         marketId: eventId,
         optionId,
         pointsStaked: BASE_STAKE_POINTS,
@@ -294,21 +373,37 @@ export default function PredictionsFeed({ selectedCategory, searchTerm }: Predic
                   <Label htmlFor="event-closes">Closes at</Label>
                   <Input id="event-closes" type="datetime-local" value={newClosesAt} onChange={(e) => setNewClosesAt(e.target.value)} />
                 </div>
-                <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="custom-options">Custom options (optional)</Label>
-                  <Input
-                    id="custom-options"
-                    value={customOptionsText}
-                    onChange={(e) => setCustomOptionsText(e.target.value)}
-                    placeholder="Yes:60,No:40"
-                  />
-                </div>
                 {newMarketType === "OVER_UNDER" && (
                   <div className="space-y-2">
                     <Label htmlFor="event-threshold">Threshold x</Label>
                     <Input id="event-threshold" value={overUnderThreshold} onChange={(e) => setOverUnderThreshold(e.target.value)} />
                   </div>
                 )}
+                <div className="space-y-3 md:col-span-2">
+                  <Label>Options and Initial Odds (%)</Label>
+                  <div className="space-y-2">
+                    {newOptions.map((option, index) => (
+                      <div key={`new-option-${index}`} className="grid gap-2 sm:grid-cols-[1fr_140px]">
+                        <Input
+                          value={option.label}
+                          onChange={(e) => updateCreateOption(index, "label", e.target.value)}
+                          placeholder={`Option ${index + 1} label`}
+                        />
+                        <Input
+                          type="number"
+                          min={1}
+                          max={100}
+                          value={option.percentage}
+                          onChange={(e) => updateCreateOption(index, "percentage", e.target.value)}
+                          placeholder="Odds %"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Total initial odds: {newOptions.reduce((sum, option) => sum + Number(option.percentage || 0), 0)}%
+                  </p>
+                </div>
               </div>
 
               <div className="flex flex-wrap items-center gap-3">
@@ -321,6 +416,9 @@ export default function PredictionsFeed({ selectedCategory, searchTerm }: Predic
                   <PlusCircle className="h-4 w-4" /> Create Event
                 </Button>
               </div>
+              {createEventError ? (
+                <p className="text-sm text-destructive">{createEventError}</p>
+              ) : null}
             </CardContent>
           </Card>
         )}
@@ -332,6 +430,7 @@ export default function PredictionsFeed({ selectedCategory, searchTerm }: Predic
             const effectiveSelectedOptionId = submittedOptionId ?? selectedOptions[event.id];
             const hasSubmittedPrediction = Boolean(existingPrediction);
             const isOpen = event.status === "OPEN";
+            const predictionLocked = !canSubmitPredictions || hasSubmittedPrediction || !isOpen;
 
             return (
             <Card key={event.id} className="border-border hover:border-primary/50 transition-colors">
@@ -376,8 +475,39 @@ export default function PredictionsFeed({ selectedCategory, searchTerm }: Predic
                       <Label htmlFor={`closes-${event.id}`}>Closes at</Label>
                       <Input id={`closes-${event.id}`} type="datetime-local" value={editClosesAt} onChange={(e) => setEditClosesAt(e.target.value)} />
                     </div>
+                    <div className="space-y-3">
+                      <Label>Edit options and odds</Label>
+                      {editOptions.map((option) => (
+                        <div key={`edit-option-${option.id}`} className="grid gap-2 sm:grid-cols-[1fr_140px]">
+                          <Input
+                            value={option.label}
+                            onChange={(e) => handleUpdateEditOption(option.id, "label", e.target.value)}
+                            placeholder="Option label"
+                          />
+                          <Input
+                            type="number"
+                            min={1}
+                            max={100}
+                            value={option.percentage}
+                            onChange={(e) => handleUpdateEditOption(option.id, "percentage", e.target.value)}
+                            placeholder="Odds %"
+                          />
+                        </div>
+                      ))}
+                      <p className="text-xs text-muted-foreground">
+                        Total odds: {editOptions.reduce((sum, option) => sum + Number(option.percentage || 0), 0)}%
+                      </p>
+                    </div>
+                    {editError ? <p className="text-sm text-destructive">{editError}</p> : null}
                     <div className="flex items-center gap-2">
-                      <Button size="sm" onClick={() => handleSaveEdit(event.id)} className="gap-2"><Check className="h-4 w-4" /> Save</Button>
+                      <Button
+                        size="sm"
+                        onClick={() => handleSaveEdit(event.id)}
+                        className="gap-2"
+                        disabled={updateMarketMutation.isPending || setOddsMutation.isPending}
+                      >
+                        <Check className="h-4 w-4" /> Save
+                      </Button>
                       <Button size="sm" variant="outline" className="gap-2" onClick={() => setEditingEventId(null)}><X className="h-4 w-4" /> Cancel</Button>
                     </div>
                   </div>
@@ -391,9 +521,10 @@ export default function PredictionsFeed({ selectedCategory, searchTerm }: Predic
                     return (
                       <button
                         key={option.id}
-                        disabled={!isOpen || hasSubmittedPrediction}
+                        disabled={predictionLocked}
                         onClick={() =>
                           isOpen &&
+                          canSubmitPredictions &&
                           !hasSubmittedPrediction &&
                           setSelectedOptions((prev) => ({ ...prev, [event.id]: option.id }))
                         }
@@ -418,7 +549,13 @@ export default function PredictionsFeed({ selectedCategory, searchTerm }: Predic
                   </div>
                 )}
 
-                {isOpen && !hasSubmittedPrediction && effectiveSelectedOptionId && (
+                {!canSubmitPredictions && isOpen && (
+                  <div className="rounded-md border border-border p-3 text-sm text-muted-foreground">
+                    Admin accounts cannot submit predictions.
+                  </div>
+                )}
+
+                {isOpen && canSubmitPredictions && !hasSubmittedPrediction && effectiveSelectedOptionId && (
                   <Button onClick={() => handleSubmitPrediction(event.id)} className="w-full gap-2">
                     <Zap className="h-4 w-4" /> Submit Prediction
                   </Button>

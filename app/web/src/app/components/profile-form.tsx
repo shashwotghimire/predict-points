@@ -216,7 +216,20 @@ export default function ProfileForm() {
                       </div>
                       <p className="text-sm text-muted-foreground">Options: {prediction.availableOptions.map((o: any) => o.label).join(", ")}</p>
                       <p className="text-sm">Chosen: {prediction.selectedOptionLabel}</p>
-                      <p className="text-sm">Status: <span className="font-medium">{prediction.status}</span></p>
+                      <p className="text-sm">
+                        Status:{" "}
+                        <span
+                          className={`font-medium ${
+                            prediction.status === "WON"
+                              ? "text-green-600"
+                              : prediction.status === "LOST"
+                                ? "text-red-600"
+                                : ""
+                          }`}
+                        >
+                          {prediction.status}
+                        </span>
+                      </p>
                     </div>
                   ))
                 )}

@@ -123,6 +123,7 @@ export default function EventDetailPage() {
   const eventId = params.eventId;
   const router = useRouter();
   const { user } = useAuth();
+  const canSubmitPredictions = user?.role === "USER";
   const [comment, setComment] = useState("");
   const [selectedOptionId, setSelectedOptionId] = useState<string>("");
 
@@ -130,7 +131,7 @@ export default function EventDetailPage() {
   const postCommentMutation = usePostComment();
   const createPredictionMutation = useCreatePrediction();
   const userPredictionsQuery = useUserPredictions({
-    userId: user?.id,
+    userId: canSubmitPredictions ? user?.id : undefined,
     page: 1,
     pageSize: 1000,
   });
@@ -207,7 +208,7 @@ export default function EventDetailPage() {
               {event.options.map((option: EventOption) => (
                 <button
                   key={option.id}
-                  disabled={!isOpen || hasSubmittedPrediction}
+                  disabled={!canSubmitPredictions || !isOpen || hasSubmittedPrediction}
                   onClick={() => setSelectedOptionId(option.id)}
                   className={`text-left rounded-md border p-3 transition-colors disabled:cursor-not-allowed disabled:opacity-70 ${selectedOptionId === option.id ? "border-primary bg-primary/10" : "border-border hover:border-primary/50"}`}
                 >
@@ -225,6 +226,12 @@ export default function EventDetailPage() {
               </div>
             )}
 
+            {!canSubmitPredictions && isOpen && (
+              <div className="rounded-md border border-border p-3 text-sm text-muted-foreground">
+                Admin accounts cannot submit predictions.
+              </div>
+            )}
+
             {selectedOption && (
               <div className="rounded-md border border-primary/40 bg-primary/5 p-3 text-sm">
                 Selected: <span className="font-medium">{selectedOption.label}</span> • Potential winnings {" "}
@@ -233,11 +240,11 @@ export default function EventDetailPage() {
             )}
 
             <Button
-              disabled={!user || !isOpen || hasSubmittedPrediction || !selectedOptionId || createPredictionMutation.isPending}
+              disabled={!user || !canSubmitPredictions || !isOpen || hasSubmittedPrediction || !selectedOptionId || createPredictionMutation.isPending}
               onClick={() => {
-                if (!user || !selectedOptionId) return;
+                if (!user || !canSubmitPredictions || !selectedOptionId) return;
                 createPredictionMutation.mutate(
-                  { userId: user.id, marketId: eventId, optionId: selectedOptionId, pointsStaked: 100 },
+                  { marketId: eventId, optionId: selectedOptionId, pointsStaked: 100 },
                   {
                     onSuccess: (prediction) => {
                       router.push(`/dashboard/events/${eventId}/confirmation?predictionId=${prediction.id}`);
@@ -248,6 +255,8 @@ export default function EventDetailPage() {
             >
               {hasSubmittedPrediction
                 ? "Prediction Submitted"
+                : !canSubmitPredictions
+                  ? "Not Available For Admin"
                 : createPredictionMutation.isPending
                   ? "Submitting..."
                   : "Submit Prediction"}

@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -233,7 +234,10 @@ export class MarketsService {
     for (const option of dto.options) {
       await this.prisma.option.update({
         where: { id: option.optionId },
-        data: { percentage: option.percentage },
+        data: {
+          percentage: option.percentage,
+          label: option.label ?? undefined,
+        },
       });
 
       await this.prisma.oddsSnapshot.create({
@@ -353,6 +357,26 @@ export class MarketsService {
     optionId: string;
     pointsStaked: number;
   }) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: input.userId },
+    });
+    if (!user) throw new NotFoundException('User not found');
+    if (user.role !== 'USER') {
+      throw new ForbiddenException('Admins cannot submit predictions');
+    }
+
+    const market = await this.prisma.market.findUnique({
+      where: { id: input.marketId },
+      select: { id: true, status: true, closesAt: true },
+    });
+    if (!market) throw new NotFoundException('Market not found');
+    if (market.status !== 'OPEN') {
+      throw new BadRequestException('Market is not open for predictions');
+    }
+    if (market.closesAt <= new Date()) {
+      throw new BadRequestException('Market is already closed for predictions');
+    }
+
     const existingPrediction = await this.prisma.prediction.findUnique({
       where: {
         userId_marketId: {
@@ -367,8 +391,11 @@ export class MarketsService {
       );
     }
 
-    const option = await this.prisma.option.findUnique({
-      where: { id: input.optionId },
+    const option = await this.prisma.option.findFirst({
+      where: {
+        id: input.optionId,
+        marketId: input.marketId,
+      },
     });
     if (!option) throw new NotFoundException('Option not found');
 

@@ -18,7 +18,12 @@ import {
 import { AlertCircle } from "lucide-react";
 import GoogleLoginButton from "./google-login-button";
 
-export default function LoginForm() {
+interface LoginFormProps {
+  mode?: "user" | "admin";
+  redirectOnSuccess?: string;
+}
+
+export default function LoginForm({ mode = "user", redirectOnSuccess }: LoginFormProps) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -32,8 +37,12 @@ export default function LoginForm() {
     setIsLoading(true);
 
     try {
-      await login(email, password);
-      router.push("/dashboard");
+      const loggedInUser = await login(email, password);
+      const fallbackRedirect =
+        loggedInUser.role === "ADMIN" || loggedInUser.role === "SUPER_ADMIN"
+          ? "/admin"
+          : "/dashboard";
+      router.push(redirectOnSuccess || fallbackRedirect);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
     } finally {
@@ -44,8 +53,8 @@ export default function LoginForm() {
   return (
     <Card className="w-full max-w-md">
       <CardHeader>
-        <CardTitle>Login to PredictPoints</CardTitle>
-        <CardDescription>Welcome back</CardDescription>
+        <CardTitle>{mode === "admin" ? "Admin Login" : "Login to PredictPoints"}</CardTitle>
+        <CardDescription>{mode === "admin" ? "Sign in to manage markets" : "Welcome back"}</CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -84,29 +93,45 @@ export default function LoginForm() {
             {isLoading ? "Logging in..." : "Login"}
           </Button>
 
-          <div className="relative py-1">
-            <div className="absolute inset-0 flex items-center">
-              <span className="w-full border-t" />
-            </div>
-            <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-card px-2 text-muted-foreground">Or continue with</span>
-            </div>
-          </div>
+          {mode !== "admin" ? (
+            <>
+              <div className="relative py-1">
+                <div className="absolute inset-0 flex items-center">
+                  <span className="w-full border-t" />
+                </div>
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="bg-card px-2 text-muted-foreground">Or continue with</span>
+                </div>
+              </div>
 
-          <GoogleLoginButton
-            onClick={startGoogleLogin}
-            disabled={isLoading}
-          />
+              <GoogleLoginButton
+                onClick={startGoogleLogin}
+                disabled={isLoading}
+              />
+            </>
+          ) : null}
 
           <div className="text-center text-sm text-muted-foreground">
-            New here?{" "}
-            <button
-              onClick={() => router.push("/register")}
-              className="text-primary hover:underline"
-              type="button"
-            >
-              Create account
-            </button>
+            {mode === "admin" ? (
+              <button
+                onClick={() => router.push("/login")}
+                className="text-primary hover:underline"
+                type="button"
+              >
+                Back to user login
+              </button>
+            ) : (
+              <>
+                New here?{" "}
+                <button
+                  onClick={() => router.push("/register")}
+                  className="text-primary hover:underline"
+                  type="button"
+                >
+                  Create account
+                </button>
+              </>
+            )}
           </div>
         </form>
       </CardContent>

@@ -11,7 +11,11 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (!isLoading && user) {
-      router.push("/dashboard");
+      if (user.role === "ADMIN" || user.role === "SUPER_ADMIN") {
+        router.push("/admin");
+      } else {
+        router.push("/dashboard");
+      }
     }
   }, [user, isLoading, router]);
 
@@ -31,6 +35,13 @@ export default function LoginPage() {
       <div className="text-center">
         <h1 className="text-4xl font-bold mb-2">PredictPoints</h1>
         <p className="text-muted-foreground">Forecast events, earn points</p>
+        <button
+          type="button"
+          onClick={() => router.push("/admin/login")}
+          className="mt-3 text-sm text-primary hover:underline"
+        >
+          Admin Login
+        </button>
       </div>
       <LoginForm />
     </div>

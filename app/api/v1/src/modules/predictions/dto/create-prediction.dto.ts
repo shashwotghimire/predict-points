@@ -2,9 +2,6 @@ import { IsInt, IsOptional, IsString, Min } from 'class-validator';
 
 export class CreatePredictionDto {
   @IsString()
-  userId: string;
-
-  @IsString()
   marketId: string;
 
   @IsString()

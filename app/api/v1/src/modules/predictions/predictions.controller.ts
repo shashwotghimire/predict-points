@@ -2,6 +2,7 @@ import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/co
 import { PredictionsService } from './predictions.service';
 import { CreatePredictionDto } from './dto/create-prediction.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
 @Controller('predictions')
 export class PredictionsController {
@@ -9,8 +10,14 @@ export class PredictionsController {
 
   @Post()
   @UseGuards(JwtAuthGuard)
-  create(@Body() dto: CreatePredictionDto) {
-    return this.predictionsService.create(dto);
+  create(
+    @Body() dto: CreatePredictionDto,
+    @CurrentUser('id') userId: string,
+  ) {
+    return this.predictionsService.create({
+      ...dto,
+      userId,
+    });
   }
 
   @Get(':id')

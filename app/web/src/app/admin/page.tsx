@@ -13,10 +13,13 @@ export default function AdminPage() {
   const { user, isLoading } = useAuth();
   const router = useRouter();
   const [searchTerm, setSearchTerm] = useState("");
+  const [usersPage, setUsersPage] = useState(1);
+  const [marketsPage, setMarketsPage] = useState(1);
+  const PAGE_SIZE = 8;
 
   useEffect(() => {
     if (!isLoading && !user) {
-      router.push("/login");
+      router.push("/admin/login");
       return;
     }
 
@@ -69,6 +72,17 @@ export default function AdminPage() {
     );
   }, [users, normalizedSearch]);
 
+  useEffect(() => {
+    setUsersPage(1);
+    setMarketsPage(1);
+  }, [normalizedSearch]);
+
+  const usersPageCount = Math.max(1, Math.ceil(filteredUsers.length / PAGE_SIZE));
+  const marketsPageCount = Math.max(1, Math.ceil(filteredMarkets.length / PAGE_SIZE));
+
+  const pagedUsers = filteredUsers.slice((usersPage - 1) * PAGE_SIZE, usersPage * PAGE_SIZE);
+  const pagedMarkets = filteredMarkets.slice((marketsPage - 1) * PAGE_SIZE, marketsPage * PAGE_SIZE);
+
   const openMarkets = filteredMarkets.filter((entry) => entry.status === "OPEN").length;
   const resolvedMarkets = filteredMarkets.length - openMarkets;
 
@@ -108,7 +122,7 @@ export default function AdminPage() {
           <Card>
             <CardHeader><CardTitle>Users</CardTitle></CardHeader>
             <CardContent className="space-y-2">
-              {filteredUsers.map((entry) => (
+              {pagedUsers.map((entry) => (
                 <div key={entry.id} className="flex items-center justify-between rounded-md border border-border p-3">
                   <div>
                     <p className="font-medium">{entry.name ?? "Unnamed"}</p>
@@ -121,13 +135,36 @@ export default function AdminPage() {
                 </div>
               ))}
               {!filteredUsers.length ? <p className="text-sm text-muted-foreground">No users match your search.</p> : null}
+              {filteredUsers.length > 0 ? (
+                <div className="flex items-center justify-end gap-2 pt-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={usersPage <= 1}
+                    onClick={() => setUsersPage((page) => page - 1)}
+                  >
+                    Previous
+                  </Button>
+                  <span className="text-xs text-muted-foreground">
+                    Page {usersPage} of {usersPageCount}
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={usersPage >= usersPageCount}
+                    onClick={() => setUsersPage((page) => page + 1)}
+                  >
+                    Next
+                  </Button>
+                </div>
+              ) : null}
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader><CardTitle>Market Status</CardTitle></CardHeader>
             <CardContent className="space-y-2">
-              {filteredMarkets.map((entry) => (
+              {pagedMarkets.map((entry) => (
                 <div key={entry.id} className="flex items-center justify-between rounded-md border border-border p-3">
                   <div>
                     <p className="font-medium">{entry.title}</p>
@@ -137,6 +174,29 @@ export default function AdminPage() {
                 </div>
               ))}
               {!filteredMarkets.length ? <p className="text-sm text-muted-foreground">No markets match your search.</p> : null}
+              {filteredMarkets.length > 0 ? (
+                <div className="flex items-center justify-end gap-2 pt-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={marketsPage <= 1}
+                    onClick={() => setMarketsPage((page) => page - 1)}
+                  >
+                    Previous
+                  </Button>
+                  <span className="text-xs text-muted-foreground">
+                    Page {marketsPage} of {marketsPageCount}
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={marketsPage >= marketsPageCount}
+                    onClick={() => setMarketsPage((page) => page + 1)}
+                  >
+                    Next
+                  </Button>
+                </div>
+              ) : null}
             </CardContent>
           </Card>
         </div>

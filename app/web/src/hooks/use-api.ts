@@ -21,6 +21,7 @@ export function useMarkets(filters: {
 }) {
   return useQuery({
     queryKey: ['markets', filters],
+    refetchInterval: 4000,
     queryFn: async () => {
       const { data } = await api.get('/markets', { params: filters });
       return (data as any[]).map(mapMarket) as MarketEvent[];
@@ -32,6 +33,7 @@ export function useMarket(eventId?: string) {
   return useQuery({
     queryKey: ['market', eventId],
     enabled: Boolean(eventId),
+    refetchInterval: 4000,
     queryFn: async () => {
       const { data } = await api.get(`/markets/${eventId}`);
       return mapMarket(data);
@@ -75,9 +77,19 @@ export function useDeleteMarket() {
 export function useSetOdds() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, options }: { id: string; options: EventOption[] }) => {
+    mutationFn: async ({
+      id,
+      options,
+    }: {
+      id: string;
+      options: Array<EventOption & { label?: string }>;
+    }) => {
       const { data } = await api.patch(`/markets/${id}/odds`, {
-        options: options.map((option) => ({ optionId: option.id, percentage: option.percentage })),
+        options: options.map((option) => ({
+          optionId: option.id,
+          percentage: option.percentage,
+          label: option.label,
+        })),
       });
       return mapMarket(data);
     },
@@ -107,7 +119,6 @@ export function useCreatePrediction() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (payload: {
-      userId: string;
       marketId: string;
       optionId: string;
       pointsStaked?: number;

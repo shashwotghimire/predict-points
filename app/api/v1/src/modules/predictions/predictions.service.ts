@@ -11,7 +11,7 @@ export class PredictionsService {
     private readonly marketsService: MarketsService,
   ) {}
 
-  create(dto: CreatePredictionDto) {
+  create(dto: CreatePredictionDto & { userId: string }) {
     return this.marketsService.createPrediction({
       userId: dto.userId,
       marketId: dto.marketId,

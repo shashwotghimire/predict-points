@@ -35,7 +35,7 @@ export default function AdminNavigation({
 
   const handleLogout = () => {
     logout();
-    router.push("/login");
+    router.push("/admin/login");
   };
 
   return (

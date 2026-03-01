@@ -1,6 +1,7 @@
 import {
   IsArray,
   IsInt,
+  IsOptional,
   IsString,
   Max,
   Min,
@@ -11,6 +12,10 @@ import { Type } from 'class-transformer';
 export class OddsOptionDto {
   @IsString()
   optionId: string;
+
+  @IsOptional()
+  @IsString()
+  label?: string;
 
   @IsInt()
   @Min(1)
