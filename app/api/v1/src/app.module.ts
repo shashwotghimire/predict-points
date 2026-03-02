@@ -10,6 +10,7 @@ import { PredictionsModule } from './modules/predictions/predictions.module';
 import { ActivityModule } from './modules/activity/activity.module';
 import { RewardsModule } from './modules/rewards/rewards.module';
 import { UsersModule } from './modules/users/users.module';
+import { RealtimeModule } from './modules/realtime/realtime.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { UsersModule } from './modules/users/users.module';
     ActivityModule,
     RewardsModule,
     UsersModule,
+    RealtimeModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -5,11 +5,12 @@ import { PrismaService } from 'src/prisma/prisma.service';
 export class ActivityService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async list() {
+  async list(limit = 100) {
+    const safeLimit = Math.min(Math.max(limit, 1), 200);
     return this.prisma.activityLog.findMany({
       include: { user: true, market: true },
       orderBy: { createdAt: 'desc' },
-      take: 100,
+      take: safeLimit,
     });
   }
 }

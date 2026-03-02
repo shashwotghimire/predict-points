@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "@/app/contexts/auth-context";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,15 @@ import { useCreatePrediction, useMarket, usePostComment, useUserPredictions } fr
 const calculatePotentialWinnings = (percentage: number, stake = 100) => {
   if (percentage <= 0) return stake;
   return Math.round((stake * 100) / percentage);
+};
+
+type ValueTrend = "up" | "down";
+type OptionFlashTrend = { odds: ValueTrend; potential: ValueTrend };
+
+const trendTextClass = (trend?: ValueTrend) => {
+  if (trend === "up") return "text-emerald-600 dark:text-emerald-400";
+  if (trend === "down") return "text-red-600 dark:text-red-400";
+  return "text-muted-foreground";
 };
 
 function OddsLineGraph({ event }: { event: MarketEvent }) {
@@ -126,6 +135,13 @@ export default function EventDetailPage() {
   const canSubmitPredictions = user?.role === "USER";
   const [comment, setComment] = useState("");
   const [selectedOptionId, setSelectedOptionId] = useState<string>("");
+  const [optionFlashTrends, setOptionFlashTrends] = useState<
+    Record<string, OptionFlashTrend>
+  >({});
+  const previousOddsRef = useRef<Record<string, number>>({});
+  const flashTimeoutsRef = useRef<Record<string, ReturnType<typeof setTimeout>>>(
+    {}
+  );
 
   const eventQuery = useMarket(eventId);
   const postCommentMutation = usePostComment();
@@ -154,6 +170,62 @@ export default function EventDetailPage() {
     () => event?.options.find((option) => option.id === selectedOptionId),
     [event, selectedOptionId]
   );
+
+  useEffect(() => {
+    if (!event) return;
+
+    const nextOdds: Record<string, number> = {};
+
+    for (const option of event.options) {
+      const key = `${event.id}:${option.id}`;
+      const currentOdds = option.percentage;
+      nextOdds[key] = currentOdds;
+
+      const previousOdds = previousOddsRef.current[key];
+      if (typeof previousOdds !== "number" || previousOdds === currentOdds) {
+        continue;
+      }
+
+      const oddsTrend: ValueTrend = currentOdds > previousOdds ? "up" : "down";
+      const previousPotential = calculatePotentialWinnings(previousOdds);
+      const currentPotential = calculatePotentialWinnings(currentOdds);
+      const potentialTrend: ValueTrend =
+        currentPotential > previousPotential
+          ? "up"
+          : currentPotential < previousPotential
+            ? "down"
+            : oddsTrend;
+
+      setOptionFlashTrends((prev) => ({
+        ...prev,
+        [key]: { odds: oddsTrend, potential: potentialTrend },
+      }));
+
+      if (flashTimeoutsRef.current[key]) {
+        clearTimeout(flashTimeoutsRef.current[key]);
+      }
+
+      flashTimeoutsRef.current[key] = setTimeout(() => {
+        setOptionFlashTrends((prev) => {
+          if (!prev[key]) return prev;
+          const next = { ...prev };
+          delete next[key];
+          return next;
+        });
+        delete flashTimeoutsRef.current[key];
+      }, 1000);
+    }
+
+    previousOddsRef.current = nextOdds;
+  }, [event]);
+
+  useEffect(() => {
+    return () => {
+      Object.values(flashTimeoutsRef.current).forEach((timeoutId) =>
+        clearTimeout(timeoutId)
+      );
+    };
+  }, []);
 
   if (eventQuery.isLoading) {
     return (
@@ -205,17 +277,30 @@ export default function EventDetailPage() {
           <CardHeader><CardTitle>Predict On This Event</CardTitle></CardHeader>
           <CardContent className="space-y-4">
             <div className="grid gap-3 sm:grid-cols-2">
-              {event.options.map((option: EventOption) => (
-                <button
-                  key={option.id}
-                  disabled={!canSubmitPredictions || !isOpen || hasSubmittedPrediction}
-                  onClick={() => setSelectedOptionId(option.id)}
-                  className={`text-left rounded-md border p-3 transition-colors disabled:cursor-not-allowed disabled:opacity-70 ${selectedOptionId === option.id ? "border-primary bg-primary/10" : "border-border hover:border-primary/50"}`}
-                >
-                  <p className="font-medium">{option.label}</p>
-                  <p className="text-sm text-muted-foreground mt-1">{option.percentage}% odds • Potential {calculatePotentialWinnings(option.percentage)} points</p>
-                </button>
-              ))}
+              {event.options.map((option: EventOption) => {
+                const potential = calculatePotentialWinnings(option.percentage);
+                const flashTrend = optionFlashTrends[`${event.id}:${option.id}`];
+
+                return (
+                  <button
+                    key={option.id}
+                    disabled={!canSubmitPredictions || !isOpen || hasSubmittedPrediction}
+                    onClick={() => setSelectedOptionId(option.id)}
+                    className={`text-left rounded-md border p-3 transition-colors disabled:cursor-not-allowed disabled:opacity-70 ${selectedOptionId === option.id ? "border-primary bg-primary/10" : "border-border hover:border-primary/50"}`}
+                  >
+                    <p className="font-medium">{option.label}</p>
+                    <p className="text-sm mt-1">
+                      <span className={trendTextClass(flashTrend?.odds)}>
+                        {option.percentage}% odds
+                      </span>
+                      <span className="text-muted-foreground"> • </span>
+                      <span className={trendTextClass(flashTrend?.potential)}>
+                        Potential {potential} points
+                      </span>
+                    </p>
+                  </button>
+                );
+              })}
             </div>
 
             {hasSubmittedPrediction && (

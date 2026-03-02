@@ -11,11 +11,20 @@ import { UpdateMarketDto } from './dto/update-market.dto';
 import { SetOddsDto } from './dto/set-odds.dto';
 import { DeclareMarketDto } from './dto/declare-market.dto';
 import { CreateCommentDto } from './dto/create-comment.dto';
-import { MarketCategory, MarketStatus, MarketType, PredictionStatus } from '../../../generated/prisma/enums';
+import {
+  MarketCategory,
+  MarketStatus,
+  MarketType,
+  PredictionStatus,
+} from '../../../generated/prisma/enums';
+import { RealtimeService } from '../realtime/realtime.service';
 
 @Injectable()
 export class MarketsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly realtime: RealtimeService,
+  ) {}
 
   private potentialWinnings(percentage: number, stake = 100) {
     if (percentage <= 0) return stake;
@@ -95,7 +104,11 @@ export class MarketsService {
     }
   }
 
-  async listMarkets(query: { category?: string; search?: string; status?: string }) {
+  async listMarkets(query: {
+    category?: string;
+    search?: string;
+    status?: string;
+  }) {
     await this.seedIfEmpty();
 
     const markets = await this.prisma.market.findMany({
@@ -188,7 +201,11 @@ export class MarketsService {
       },
     });
 
-    return this.getMarket(market.id);
+    const hydratedMarket = await this.getMarket(market.id);
+    this.realtime.broadcast(['markets', 'market', 'activity'], {
+      marketId: market.id,
+    });
+    return hydratedMarket;
   }
 
   async updateMarket(id: string, dto: UpdateMarketDto) {
@@ -210,7 +227,11 @@ export class MarketsService {
       },
     });
 
-    return this.getMarket(id);
+    const updatedMarket = await this.getMarket(id);
+    this.realtime.broadcast(['markets', 'market', 'activity'], {
+      marketId: id,
+    });
+    return updatedMarket;
   }
 
   async deleteMarket(id: string) {
@@ -225,6 +246,7 @@ export class MarketsService {
       this.prisma.market.delete({ where: { id } }),
     ]);
 
+    this.realtime.broadcast(['markets', 'activity'], { marketId: id });
     return { success: true };
   }
 
@@ -257,7 +279,11 @@ export class MarketsService {
       },
     });
 
-    return this.getMarket(id);
+    const marketWithUpdatedOdds = await this.getMarket(id);
+    this.realtime.broadcast(['markets', 'market', 'activity'], {
+      marketId: id,
+    });
+    return marketWithUpdatedOdds;
   }
 
   async declare(id: string, dto: DeclareMarketDto) {
@@ -304,7 +330,20 @@ export class MarketsService {
       },
     });
 
-    return this.getMarket(id);
+    const declaredMarket = await this.getMarket(id);
+    this.realtime.broadcast(
+      [
+        'markets',
+        'market',
+        'activity',
+        'leaderboard',
+        'user-points',
+        'user-predictions',
+        'admin-users',
+      ],
+      { marketId: id },
+    );
+    return declaredMarket;
   }
 
   async createComment(marketId: string, dto: CreateCommentDto) {
@@ -326,6 +365,7 @@ export class MarketsService {
       },
     });
 
+    this.realtime.broadcast(['market', 'activity'], { marketId });
     return comment;
   }
 
@@ -429,6 +469,14 @@ export class MarketsService {
         message: `${prediction.user.name ?? prediction.user.email} predicted '${prediction.option.label}' on '${prediction.market.title}' (potential ${potentialWinnings} points)`,
       },
     });
+
+    this.realtime.broadcast(
+      ['markets', 'market', 'activity', 'user-predictions', 'predictions'],
+      {
+        marketId: input.marketId,
+        userId: input.userId,
+      },
+    );
 
     return prediction;
   }

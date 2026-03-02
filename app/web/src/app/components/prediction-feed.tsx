@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -53,10 +53,18 @@ const marketTypeLabels: Record<MarketType, string> = {
 
 type OptionDraft = { label: string; percentage: number };
 type EditOptionDraft = { id: string; label: string; percentage: number };
+type ValueTrend = "up" | "down";
+type OptionFlashTrend = { odds: ValueTrend; potential: ValueTrend };
 
 const calculatePotentialWinnings = (percentage: number, stake = BASE_STAKE_POINTS) => {
   if (percentage <= 0) return stake;
   return Math.round((stake * 100) / percentage);
+};
+
+const trendTextClass = (trend?: ValueTrend) => {
+  if (trend === "up") return "text-emerald-600 dark:text-emerald-400";
+  if (trend === "down") return "text-red-600 dark:text-red-400";
+  return "text-muted-foreground";
 };
 
 const createOptionDraftsByType = (marketType: MarketType, threshold: string): OptionDraft[] => {
@@ -129,12 +137,75 @@ export default function PredictionsFeed({ selectedCategory, searchTerm }: Predic
   const [editClosesAt, setEditClosesAt] = useState("");
   const [editOptions, setEditOptions] = useState<EditOptionDraft[]>([]);
   const [editError, setEditError] = useState<string | null>(null);
+  const [optionFlashTrends, setOptionFlashTrends] = useState<
+    Record<string, OptionFlashTrend>
+  >({});
+  const previousOddsRef = useRef<Record<string, number>>({});
+  const flashTimeoutsRef = useRef<Record<string, ReturnType<typeof setTimeout>>>(
+    {}
+  );
 
   const filteredEvents = useMemo(() => events, [events]);
   const predictionByEventId = useMemo(
     () => new Map(userPredictions.map((prediction) => [prediction.eventId, prediction])),
     [userPredictions]
   );
+
+  useEffect(() => {
+    const nextOdds: Record<string, number> = {};
+
+    for (const event of filteredEvents) {
+      for (const option of event.options) {
+        const key = `${event.id}:${option.id}`;
+        const currentOdds = option.percentage;
+        nextOdds[key] = currentOdds;
+
+        const previousOdds = previousOddsRef.current[key];
+        if (typeof previousOdds !== "number" || previousOdds === currentOdds) {
+          continue;
+        }
+
+        const oddsTrend: ValueTrend = currentOdds > previousOdds ? "up" : "down";
+        const previousPotential = calculatePotentialWinnings(previousOdds);
+        const currentPotential = calculatePotentialWinnings(currentOdds);
+        const potentialTrend: ValueTrend =
+          currentPotential > previousPotential
+            ? "up"
+            : currentPotential < previousPotential
+              ? "down"
+              : oddsTrend;
+
+        setOptionFlashTrends((prev) => ({
+          ...prev,
+          [key]: { odds: oddsTrend, potential: potentialTrend },
+        }));
+
+        if (flashTimeoutsRef.current[key]) {
+          clearTimeout(flashTimeoutsRef.current[key]);
+        }
+
+        flashTimeoutsRef.current[key] = setTimeout(() => {
+          setOptionFlashTrends((prev) => {
+            if (!prev[key]) return prev;
+            const next = { ...prev };
+            delete next[key];
+            return next;
+          });
+          delete flashTimeoutsRef.current[key];
+        }, 1000);
+      }
+    }
+
+    previousOddsRef.current = nextOdds;
+  }, [filteredEvents]);
+
+  useEffect(() => {
+    return () => {
+      Object.values(flashTimeoutsRef.current).forEach((timeoutId) =>
+        clearTimeout(timeoutId)
+      );
+    };
+  }, []);
 
   useEffect(() => {
     setNewOptions(createOptionDraftsByType(newMarketType, overUnderThreshold));
@@ -517,6 +588,7 @@ export default function PredictionsFeed({ selectedCategory, searchTerm }: Predic
                   {event.options.map((option: EventOption) => {
                     const selected = effectiveSelectedOptionId === option.id;
                     const potential = calculatePotentialWinnings(option.percentage);
+                    const flashTrend = optionFlashTrends[`${event.id}:${option.id}`];
 
                     return (
                       <button
@@ -532,8 +604,12 @@ export default function PredictionsFeed({ selectedCategory, searchTerm }: Predic
                       >
                         <div className="font-medium">{option.label}</div>
                         <div className="text-sm text-muted-foreground mt-2 flex items-center justify-between">
-                          <span>{option.percentage}%</span>
-                          <span>Potential {potential} pts</span>
+                          <span className={trendTextClass(flashTrend?.odds)}>
+                            {option.percentage}%
+                          </span>
+                          <span className={trendTextClass(flashTrend?.potential)}>
+                            Potential {potential} pts
+                          </span>
                         </div>
                       </button>
                     );

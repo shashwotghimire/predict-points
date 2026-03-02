@@ -26,10 +26,11 @@ export function useMarkets(filters: {
   category?: string;
   search?: string;
   status?: string;
-}) {
+}, options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: ['markets', filters],
-    refetchInterval: 4000,
+    enabled: options?.enabled ?? true,
+    staleTime: 10_000,
     queryFn: async () => {
       const { data } = await api.get('/markets', { params: filters });
       return (data as any[]).map(mapMarket) as MarketEvent[];
@@ -41,7 +42,6 @@ export function useMarket(eventId?: string) {
   return useQuery({
     queryKey: ['market', eventId],
     enabled: Boolean(eventId),
-    refetchInterval: 4000,
     queryFn: async () => {
       const { data } = await api.get(`/markets/${eventId}`);
       return mapMarket(data);
@@ -169,12 +169,15 @@ export function usePostComment() {
   });
 }
 
-export function useActivity() {
+export function useActivity(options?: { limit?: number; enabled?: boolean }) {
   return useQuery({
-    queryKey: ['activity'],
-    refetchInterval: 4000,
+    queryKey: ['activity', options?.limit ?? null],
+    enabled: options?.enabled ?? true,
+    staleTime: 5_000,
     queryFn: async () => {
-      const { data } = await api.get('/activity');
+      const { data } = await api.get('/activity', {
+        params: options?.limit ? { limit: options.limit } : undefined,
+      });
       return data as any[];
     },
   });
@@ -228,16 +231,32 @@ export function useRewardsCatalog(params?: {
   includeInactive?: boolean;
   page?: number;
   pageSize?: number;
+  enabled?: boolean;
 }) {
   return useQuery({
-    queryKey: ['rewards-catalog', params],
+    queryKey: [
+      'rewards-catalog',
+      {
+        search: params?.search,
+        includeInactive: params?.includeInactive,
+        page: params?.page,
+        pageSize: params?.pageSize,
+      },
+    ],
+    enabled: params?.enabled ?? true,
+    staleTime: 10_000,
+    placeholderData: (previousData) => previousData,
     queryFn: async () => {
       const { data } = await api.get('/rewards/catalog', {
-        params,
+        params: {
+          search: params?.search,
+          includeInactive: params?.includeInactive,
+          page: params?.page,
+          pageSize: params?.pageSize,
+        },
       });
       return data as Paginated<RewardCatalogItem>;
     },
-    refetchInterval: 4000,
   });
 }
 
@@ -338,7 +357,6 @@ export function useAdminUsers(enabled = true) {
 export function useLeaderboard(limit = 20) {
   return useQuery({
     queryKey: ['leaderboard', limit],
-    refetchInterval: 4000,
     queryFn: async () => {
       const { data } = await api.get('/users/leaderboard', {
         params: { limit },

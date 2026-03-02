@@ -5,13 +5,7 @@ import {
   getRefreshToken,
   setAuthTokens,
 } from "@/lib/api/auth-tokens";
-
-const rawBase =
-  process.env.NEXT_PUBLIC_API_BASE_URL ||
-  process.env.NEXT_PUBLIC_API_URL ||
-  "http://localhost:3001";
-
-const baseURL = `${rawBase.replace(/\/$/, "")}/api/v1`;
+import { apiBaseUrl } from "@/lib/api/config";
 
 type RetriableRequestConfig = InternalAxiosRequestConfig & { _retry?: boolean };
 
@@ -48,7 +42,7 @@ const createRefreshPromise = async () => {
 };
 
 export const api = axios.create({
-  baseURL,
+  baseURL: apiBaseUrl,
   headers: {
     "Content-Type": "application/json",
   },
@@ -68,7 +62,11 @@ api.interceptors.response.use(
   (response) => response,
   async (error: AxiosError) => {
     const originalRequest = error.config as RetriableRequestConfig | undefined;
-    if (!originalRequest || error.response?.status !== 401 || originalRequest._retry) {
+    if (
+      !originalRequest ||
+      error.response?.status !== 401 ||
+      originalRequest._retry
+    ) {
       return Promise.reject(error);
     }
 

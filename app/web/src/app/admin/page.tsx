@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../contexts/auth-context";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -23,7 +23,9 @@ import { RewardType } from "@/lib/api/types";
 export default function AdminPage() {
   const { user, isLoading } = useAuth();
   const router = useRouter();
+  const isAdmin = Boolean(user && ["ADMIN", "SUPER_ADMIN"].includes(user.role));
   const [searchTerm, setSearchTerm] = useState("");
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
   const [usersPage, setUsersPage] = useState(1);
   const [marketsPage, setMarketsPage] = useState(1);
   const [rewardsPage, setRewardsPage] = useState(1);
@@ -53,40 +55,42 @@ export default function AdminPage() {
     }
   }, [isLoading, user, router]);
 
-  const marketsQuery = useMarkets({});
-  const activityQuery = useActivity();
-  const usersQuery = useAdminUsers(Boolean(user && ["ADMIN", "SUPER_ADMIN"].includes(user.role)));
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm);
+    }, 250);
+
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [searchTerm]);
+
+  const marketsQuery = useMarkets({}, { enabled: isAdmin });
+  const activityQuery = useActivity({ limit: 10, enabled: isAdmin });
+  const usersQuery = useAdminUsers(isAdmin);
   const rewardsQuery = useRewardsCatalog({
-    search: searchTerm || undefined,
+    search: debouncedSearchTerm.trim() || undefined,
     includeInactive: true,
     page: rewardsPage,
     pageSize: PAGE_SIZE,
+    enabled: isAdmin,
   });
   const createRewardMutation = useCreateReward();
   const updateRewardMutation = useUpdateReward();
   const deleteRewardMutation = useDeleteReward();
 
-  if (isLoading || !user) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-          <p className="mt-4 text-muted-foreground">Loading...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (!["ADMIN", "SUPER_ADMIN"].includes(user.role)) {
-    return null;
-  }
-
-  const markets = marketsQuery.data ?? [];
+  const markets = useMemo(() => marketsQuery.data ?? [], [marketsQuery.data]);
   const activity = activityQuery.data ?? [];
-  const users = usersQuery.data ?? [];
+  const users = useMemo(() => usersQuery.data ?? [], [usersQuery.data]);
   const rewards = rewardsQuery.data?.items ?? [];
   const rewardsPageCount = rewardsQuery.data?.pageCount ?? 1;
   const normalizedSearch = searchTerm.trim().toLowerCase();
+  const handleSearchChange = useCallback((value: string) => {
+    setSearchTerm(value);
+    setUsersPage(1);
+    setMarketsPage(1);
+    setRewardsPage(1);
+  }, []);
 
   const filteredMarkets = useMemo(() => {
     if (!normalizedSearch) return markets;
@@ -108,20 +112,46 @@ export default function AdminPage() {
     );
   }, [users, normalizedSearch]);
 
-  useEffect(() => {
-    setUsersPage(1);
-    setMarketsPage(1);
-    setRewardsPage(1);
-  }, [normalizedSearch]);
+  const usersPageCount = useMemo(
+    () => Math.max(1, Math.ceil(filteredUsers.length / PAGE_SIZE)),
+    [filteredUsers.length]
+  );
+  const marketsPageCount = useMemo(
+    () => Math.max(1, Math.ceil(filteredMarkets.length / PAGE_SIZE)),
+    [filteredMarkets.length]
+  );
 
-  const usersPageCount = Math.max(1, Math.ceil(filteredUsers.length / PAGE_SIZE));
-  const marketsPageCount = Math.max(1, Math.ceil(filteredMarkets.length / PAGE_SIZE));
+  const pagedUsers = useMemo(
+    () => filteredUsers.slice((usersPage - 1) * PAGE_SIZE, usersPage * PAGE_SIZE),
+    [filteredUsers, usersPage]
+  );
+  const pagedMarkets = useMemo(
+    () => filteredMarkets.slice((marketsPage - 1) * PAGE_SIZE, marketsPage * PAGE_SIZE),
+    [filteredMarkets, marketsPage]
+  );
 
-  const pagedUsers = filteredUsers.slice((usersPage - 1) * PAGE_SIZE, usersPage * PAGE_SIZE);
-  const pagedMarkets = filteredMarkets.slice((marketsPage - 1) * PAGE_SIZE, marketsPage * PAGE_SIZE);
+  const { openMarkets, resolvedMarkets } = useMemo(() => {
+    const openCount = filteredMarkets.filter((entry) => entry.status === "OPEN").length;
+    return {
+      openMarkets: openCount,
+      resolvedMarkets: filteredMarkets.length - openCount,
+    };
+  }, [filteredMarkets]);
 
-  const openMarkets = filteredMarkets.filter((entry) => entry.status === "OPEN").length;
-  const resolvedMarkets = filteredMarkets.length - openMarkets;
+  if (isLoading || !user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="text-center">
+          <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+          <p className="mt-4 text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!["ADMIN", "SUPER_ADMIN"].includes(user.role)) {
+    return null;
+  }
 
   const handleCreateReward = async () => {
     setRewardError(null);
@@ -201,7 +231,7 @@ export default function AdminPage() {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <AdminNavigation searchTerm={searchTerm} setSearchTerm={setSearchTerm} />
+      <AdminNavigation searchTerm={searchTerm} setSearchTerm={handleSearchChange} />
 
       <main className="mx-auto max-w-7xl px-4 py-8 space-y-6">
         <div className="flex items-center justify-between gap-3">

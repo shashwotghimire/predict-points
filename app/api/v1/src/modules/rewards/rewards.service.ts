@@ -4,10 +4,14 @@ import { RedeemRewardDto } from './dto/redeem-reward.dto';
 import { CreateRewardDto } from './dto/create-reward.dto';
 import { UpdateRewardDto } from './dto/update-reward.dto';
 import { RewardType } from '../../../generated/prisma/enums';
+import { RealtimeService } from '../realtime/realtime.service';
 
 @Injectable()
 export class RewardsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly realtime: RealtimeService,
+  ) {}
 
   private validatePhone(phoneNumber: string) {
     return /^\+?[0-9][0-9\s-]{6,15}$/.test(phoneNumber);
@@ -37,7 +41,9 @@ export class RewardsService {
 
     if (type === RewardType.FOOD_VOUCHER || type === RewardType.FREE_PINTS) {
       if (!fullName) {
-        throw new BadRequestException('Full name is required for this reward type');
+        throw new BadRequestException(
+          'Full name is required for this reward type',
+        );
       }
       return { fullName, note: note || null };
     }
@@ -98,7 +104,7 @@ export class RewardsService {
   }
 
   async createReward(dto: CreateRewardDto) {
-    return this.prisma.reward.create({
+    const reward = await this.prisma.reward.create({
       data: {
         name: dto.name,
         description: dto.description,
@@ -108,10 +114,12 @@ export class RewardsService {
         isActive: dto.isActive ?? true,
       },
     });
+    this.realtime.broadcast(['rewards-catalog']);
+    return reward;
   }
 
   async updateReward(id: string, dto: UpdateRewardDto) {
-    return this.prisma.reward.update({
+    const reward = await this.prisma.reward.update({
       where: { id },
       data: {
         name: dto.name,
@@ -122,10 +130,13 @@ export class RewardsService {
         isActive: dto.isActive,
       },
     });
+    this.realtime.broadcast(['rewards-catalog']);
+    return reward;
   }
 
   async deleteReward(id: string) {
     await this.prisma.reward.delete({ where: { id } });
+    this.realtime.broadcast(['rewards-catalog']);
     return { success: true };
   }
 
@@ -175,6 +186,17 @@ export class RewardsService {
       }),
     ]);
 
+    this.realtime.broadcast(
+      [
+        'user-points',
+        'user-rewards',
+        'rewards-catalog',
+        'activity',
+        'leaderboard',
+        'admin-users',
+      ],
+      { userId },
+    );
     return redemption;
   }
 
