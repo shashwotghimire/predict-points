@@ -6,8 +6,8 @@ import { createContext, useContext, useMemo, useSyncExternalStore } from "react"
 import { usePathname } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api/client";
-import { clearAuthTokens, setAuthTokens } from "@/lib/api/client";
-import { getRefreshToken } from "@/lib/api/auth-tokens";
+import { clearAuthTokens } from "@/lib/api/client";
+import { apiOrigin } from "@/lib/api/config";
 
 export type UserRole = "ADMIN" | "USER" | "SUPER_ADMIN" | "MODERATOR";
 
@@ -21,8 +21,6 @@ export interface User {
 
 interface AuthApiResponse {
   user: User;
-  accessToken?: string;
-  refreshToken?: string;
 }
 
 interface AuthContextType {
@@ -69,24 +67,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return null;
         }
 
-        const refreshToken = getRefreshToken();
-        if (!refreshToken) {
-          return null;
-        }
-
         try {
-          const { data: refreshed } = await api.post(
-            "/auth/refresh",
-            { refreshToken },
-            {
-              params: { transport: "body" },
-              headers: { "x-auth-transport": "body" },
-            },
-          );
-          setAuthTokens({
-            accessToken: refreshed?.accessToken ?? null,
-            refreshToken: refreshed?.refreshToken ?? null,
-          });
+          await api.post("/auth/refresh");
           const { data } = await api.get("/auth/me");
           return data as User;
         } catch {
@@ -107,9 +89,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const { data } = await api.post("/auth/login", {
           email: payload.email,
           password: payload.password,
-        }, {
-          params: { transport: "body" },
-          headers: { "x-auth-transport": "body" },
         });
         return data as AuthApiResponse;
       }
@@ -118,9 +97,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         email: payload.email,
         password: payload.password,
         name: payload.name,
-      }, {
-        params: { transport: "body" },
-        headers: { "x-auth-transport": "body" },
       });
       return data as AuthApiResponse;
     },
@@ -131,28 +107,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = async (email: string, password: string) => {
     const result = await authMutation.mutateAsync({ mode: "login", email, password });
-    setAuthTokens({
-      accessToken: result.accessToken ?? null,
-      refreshToken: result.refreshToken ?? null,
-    });
     return result.user;
   };
 
   const register = async (email: string, password: string, name: string) => {
     const result = await authMutation.mutateAsync({ mode: "register", email, password, name });
-    setAuthTokens({
-      accessToken: result.accessToken ?? null,
-      refreshToken: result.refreshToken ?? null,
-    });
     return result.user;
   };
 
   const startGoogleLogin = () => {
-    const base =
-      process.env.NEXT_PUBLIC_API_BASE_URL ||
-      process.env.NEXT_PUBLIC_API_URL ||
-      "http://localhost:3001";
-    window.location.href = `${base.replace(/\/$/, "")}/api/v1/auth/google/start?transport=body`;
+    window.location.href = `${apiOrigin}/api/v1/auth/google/start`;
   };
 
   const logout = async () => {

@@ -2,18 +2,23 @@ import {
   IsBoolean,
   IsEnum,
   IsInt,
+  IsNotEmpty,
   IsOptional,
   IsString,
+  MaxLength,
   Min,
 } from 'class-validator';
 import { RewardType } from '../../../../generated/prisma/enums';
 
 export class CreateRewardDto {
   @IsString()
+  @IsNotEmpty()
+  @MaxLength(120)
   name: string;
 
   @IsOptional()
   @IsString()
+  @MaxLength(1000)
   description?: string;
 
   @IsEnum(RewardType)
@@ -25,6 +30,7 @@ export class CreateRewardDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(120)
   iconKey?: string;
 
   @IsOptional()

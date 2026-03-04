@@ -204,8 +204,14 @@ export class RewardsService {
     userId: string,
     query: { search?: string; sort?: string; page?: number; pageSize?: number },
   ) {
-    const page = query.page ?? 1;
-    const pageSize = query.pageSize ?? 10;
+    const page =
+      Number.isFinite(query.page) && (query.page ?? 0) > 0
+        ? Math.floor(query.page as number)
+        : 1;
+    const pageSize =
+      Number.isFinite(query.pageSize) && (query.pageSize ?? 0) > 0
+        ? Math.min(Math.floor(query.pageSize as number), 100)
+        : 10;
 
     const where = {
       userId,

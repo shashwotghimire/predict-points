@@ -18,6 +18,13 @@ import {
   PredictionStatus,
 } from '../../../generated/prisma/enums';
 import { RealtimeService } from '../realtime/realtime.service';
+import { isProduction, parseBoolean } from '../../common/security/env';
+
+const publicCommentUserSelect = {
+  id: true,
+  name: true,
+  profilePicUrl: true,
+} as const;
 
 @Injectable()
 export class MarketsService {
@@ -32,24 +39,14 @@ export class MarketsService {
   }
 
   async seedIfEmpty() {
+    const sampleDataEnabled = parseBoolean(
+      process.env.ENABLE_SAMPLE_DATA,
+      false,
+    );
+    if (!sampleDataEnabled || isProduction()) return;
+
     const count = await this.prisma.market.count();
     if (count > 0) return;
-
-    let systemUser = await this.prisma.user.findUnique({
-      where: { email: 'system@predictpoints.local' },
-    });
-
-    if (!systemUser) {
-      systemUser = await this.prisma.user.create({
-        data: {
-          email: 'system@predictpoints.local',
-          name: 'System',
-          password: 'seeded',
-          role: 'ADMIN',
-          points: 0,
-        },
-      });
-    }
 
     const samples = [
       {
@@ -86,7 +83,6 @@ export class MarketsService {
           category: sample.category,
           type: sample.type,
           closesAt: sample.closesAt,
-          createdById: systemUser.id,
           options: {
             create: sample.options,
           },
@@ -125,7 +121,7 @@ export class MarketsService {
       include: {
         options: true,
         comments: {
-          include: { user: true },
+          include: { user: { select: publicCommentUserSelect } },
           orderBy: { createdAt: 'desc' },
         },
         oddsSnapshots: {
@@ -146,7 +142,7 @@ export class MarketsService {
       include: {
         options: true,
         comments: {
-          include: { user: true },
+          include: { user: { select: publicCommentUserSelect } },
           orderBy: { createdAt: 'desc' },
         },
         oddsSnapshots: {
@@ -160,7 +156,7 @@ export class MarketsService {
     return market;
   }
 
-  async createMarket(dto: CreateMarketDto) {
+  async createMarket(dto: CreateMarketDto, createdById: string) {
     if (!dto.options?.length) {
       throw new BadRequestException('At least one option is required');
     }
@@ -169,11 +165,11 @@ export class MarketsService {
       data: {
         title: dto.title,
         description: dto.description,
-        category: dto.category as MarketCategory,
-        type: dto.type as MarketType,
+        category: dto.category,
+        type: dto.type,
         closesAt: new Date(dto.closesAt),
         eventIconUrl: dto.eventIconUrl,
-        createdById: dto.createdById,
+        createdById,
         options: {
           create: dto.options.map((option) => ({
             label: option.label,
@@ -196,7 +192,7 @@ export class MarketsService {
       data: {
         type: 'EVENT_CREATED',
         marketId: market.id,
-        userId: dto.createdById,
+        userId: createdById,
         message: `Event created: ${market.title}`,
       },
     });
@@ -254,13 +250,16 @@ export class MarketsService {
     const market = await this.getMarket(id);
 
     for (const option of dto.options) {
-      await this.prisma.option.update({
-        where: { id: option.optionId },
+      const updated = await this.prisma.option.updateMany({
+        where: { id: option.optionId, marketId: id },
         data: {
           percentage: option.percentage,
           label: option.label ?? undefined,
         },
       });
+      if (updated.count === 0) {
+        throw new NotFoundException('Option not found for this market');
+      }
 
       await this.prisma.oddsSnapshot.create({
         data: {
@@ -288,6 +287,14 @@ export class MarketsService {
 
   async declare(id: string, dto: DeclareMarketDto) {
     const market = await this.getMarket(id);
+    const declaredOption = await this.prisma.option.findFirst({
+      where: { id: dto.optionId, marketId: id },
+    });
+    if (!declaredOption) {
+      throw new BadRequestException(
+        'Declared option does not belong to this market',
+      );
+    }
 
     await this.prisma.market.update({
       where: { id },
@@ -346,14 +353,17 @@ export class MarketsService {
     return declaredMarket;
   }
 
-  async createComment(marketId: string, dto: CreateCommentDto) {
+  async createComment(
+    marketId: string,
+    dto: CreateCommentDto & { userId: string },
+  ) {
     const comment = await this.prisma.eventComment.create({
       data: {
         marketId,
         userId: dto.userId,
         content: dto.message,
       },
-      include: { user: true },
+      include: { user: { select: publicCommentUserSelect } },
     });
 
     await this.prisma.activityLog.create({
@@ -361,7 +371,7 @@ export class MarketsService {
         type: 'COMMENT_ADDED',
         marketId,
         userId: dto.userId,
-        message: `${comment.user.name ?? comment.user.email} commented on ${marketId}`,
+        message: `${comment.user.name ?? 'User'} commented on ${marketId}`,
       },
     });
 
@@ -372,14 +382,14 @@ export class MarketsService {
   async getComments(marketId: string) {
     return this.prisma.eventComment.findMany({
       where: { marketId },
-      include: { user: true },
+      include: { user: { select: publicCommentUserSelect } },
       orderBy: { createdAt: 'desc' },
     });
   }
 
   async getActivity() {
     return this.prisma.activityLog.findMany({
-      include: { user: true },
+      include: { user: { select: publicCommentUserSelect } },
       orderBy: { createdAt: 'desc' },
       take: 100,
     });
@@ -457,7 +467,6 @@ export class MarketsService {
         market: {
           include: { options: true },
         },
-        user: true,
       },
     });
 
@@ -466,7 +475,7 @@ export class MarketsService {
         type: 'PREDICTION_SUBMITTED',
         marketId: input.marketId,
         userId: input.userId,
-        message: `${prediction.user.name ?? prediction.user.email} predicted '${prediction.option.label}' on '${prediction.market.title}' (potential ${potentialWinnings} points)`,
+        message: `${user.name ?? user.email} predicted '${prediction.option.label}' on '${prediction.market.title}' (potential ${potentialWinnings} points)`,
       },
     });
 

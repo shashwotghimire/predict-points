@@ -1,6 +1,8 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
+  OnModuleInit,
   UnauthorizedException,
 } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
@@ -10,51 +12,85 @@ import { LoginUserDto } from './dto/login-user.dto';
 import { JwtService } from '@nestjs/jwt';
 import { google } from 'googleapis';
 import crypto from 'crypto';
+import {
+  getRequiredSecret,
+  parseBoolean,
+  parsePositiveInt,
+} from '../../common/security/env';
 
 @Injectable()
-export class AuthService {
+export class AuthService implements OnModuleInit {
+  private readonly logger = new Logger(AuthService.name);
+  private googlePasswordHash: string | null = null;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
   ) {}
 
-  private async ensureSeedAdminUser() {
-    const seedEmail = process.env.SEED_ADMIN_EMAIL || 'system@predictpoints.local';
-    const seedPassword = process.env.SEED_ADMIN_PASSWORD || 'seeded123';
-    const seedName = process.env.SEED_ADMIN_NAME || 'System Admin';
+  async onModuleInit() {
+    await this.bootstrapAdminIfEnabled();
+  }
+
+  private async bootstrapAdminIfEnabled() {
+    const shouldBootstrap = parseBoolean(process.env.BOOTSTRAP_ADMIN, false);
+    if (!shouldBootstrap) return;
+
+    const seedEmail = process.env.SEED_ADMIN_EMAIL?.trim().toLowerCase();
+    const seedPassword = process.env.SEED_ADMIN_PASSWORD;
+    const seedName = process.env.SEED_ADMIN_NAME?.trim() || 'System Admin';
+    if (!seedEmail || !seedPassword) {
+      throw new Error(
+        'BOOTSTRAP_ADMIN=true requires SEED_ADMIN_EMAIL and SEED_ADMIN_PASSWORD.',
+      );
+    }
+
+    if (seedPassword.length < 12) {
+      throw new Error(
+        'SEED_ADMIN_PASSWORD must contain at least 12 characters.',
+      );
+    }
 
     const existing = await this.prisma.user.findUnique({
       where: { email: seedEmail },
     });
 
-    const hashedSeedPassword = await hashPassword(seedPassword);
-
-    if (!existing) {
-      await this.prisma.user.create({
-        data: {
-          email: seedEmail,
-          name: seedName,
-          password: hashedSeedPassword,
-          role: 'ADMIN',
-          authProvider: 'LOCAL',
-          points: 0,
-        },
-      });
+    if (existing) {
+      if (!['ADMIN', 'SUPER_ADMIN'].includes(existing.role)) {
+        await this.prisma.user.update({
+          where: { id: existing.id },
+          data: { role: 'ADMIN' },
+        });
+      }
+      this.logger.log(`Bootstrap admin already exists (${seedEmail}).`);
       return;
     }
 
-    const isHashFormat = existing.password.startsWith('$2');
-    if (!isHashFormat || existing.role !== 'ADMIN') {
-      await this.prisma.user.update({
-        where: { id: existing.id },
-        data: {
-          password: hashedSeedPassword,
-          role: 'ADMIN',
-          authProvider: 'LOCAL',
-          name: existing.name || seedName,
-        },
-      });
+    const hashedSeedPassword = await hashPassword(seedPassword);
+    await this.prisma.user.create({
+      data: {
+        email: seedEmail,
+        name: seedName,
+        password: hashedSeedPassword,
+        role: 'ADMIN',
+        authProvider: 'LOCAL',
+        points: 0,
+      },
+    });
+    this.logger.warn(`Bootstrap admin created (${seedEmail}).`);
+  }
+
+  private get refreshTokenTtlDays() {
+    return parsePositiveInt(process.env.REFRESH_TOKEN_TTL_DAYS, 30);
+  }
+
+  private async getGooglePasswordHash() {
+    if (!this.googlePasswordHash) {
+      this.googlePasswordHash = await hashPassword(
+        crypto.randomBytes(32).toString('hex'),
+      );
     }
+    return this.googlePasswordHash;
   }
 
   private get oauthClient() {
@@ -84,7 +120,7 @@ export class AuthService {
         type: 'access',
       },
       {
-        secret: process.env.JWT_SECRET || 'dev-super-secret',
+        secret: getRequiredSecret('JWT_SECRET'),
         expiresIn: (process.env.JWT_EXPIRES_IN || '15m') as any,
       },
     );
@@ -99,7 +135,7 @@ export class AuthService {
         type: 'refresh',
       },
       {
-        secret: process.env.JWT_REFRESH_SECRET || 'dev-refresh-secret',
+        secret: getRequiredSecret('JWT_REFRESH_SECRET'),
         expiresIn: (process.env.JWT_REFRESH_EXPIRES_IN || '30d') as any,
       },
     );
@@ -108,7 +144,7 @@ export class AuthService {
   private async persistRefreshToken(userId: string, refreshToken: string) {
     const refreshTokenHash = await hashPassword(refreshToken);
     const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + 30);
+    expiresAt.setDate(expiresAt.getDate() + this.refreshTokenTtlDays);
 
     await this.prisma.user.update({
       where: { id: userId },
@@ -144,28 +180,26 @@ export class AuthService {
   }
 
   async registerUser(registerUserDto: RegisterUserDto) {
-    await this.ensureSeedAdminUser();
-    const { email, name, phoneNumber, password, profilePicUrl } = registerUserDto;
+    const { email, name, phoneNumber, password, profilePicUrl } =
+      registerUserDto;
+    const normalizedEmail = email.trim().toLowerCase();
+    const normalizedName = name.trim();
 
-    const existing = await this.prisma.user.findUnique({ where: { email } });
+    const existing = await this.prisma.user.findUnique({
+      where: { email: normalizedEmail },
+    });
     if (existing) throw new BadRequestException('Email already registered');
 
     const hashedPassword = await hashPassword(password);
 
-    const role =
-      email.toLowerCase().startsWith('admin@') ||
-      email.toLowerCase().includes('+admin')
-        ? 'ADMIN'
-        : 'USER';
-
     const user = await this.prisma.user.create({
       data: {
-        email,
-        name,
+        email: normalizedEmail,
+        name: normalizedName,
         password: hashedPassword,
         phoneNumber,
         profilePicUrl,
-        role,
+        role: 'USER',
         authProvider: 'LOCAL',
       },
     });
@@ -174,10 +208,12 @@ export class AuthService {
   }
 
   async loginUser(loginUserDto: LoginUserDto) {
-    await this.ensureSeedAdminUser();
     const { email, password } = loginUserDto;
+    const normalizedEmail = email.trim().toLowerCase();
 
-    const user = await this.prisma.user.findUnique({ where: { email } });
+    const user = await this.prisma.user.findUnique({
+      where: { email: normalizedEmail },
+    });
     if (!user) throw new UnauthorizedException('Invalid email or password');
 
     const valid = await verifyHashedPassword(password, user.password);
@@ -212,8 +248,9 @@ export class AuthService {
       throw new UnauthorizedException('Google did not return an email');
     }
 
+    const googlePasswordHash = await this.getGooglePasswordHash();
     const user = await this.prisma.user.upsert({
-      where: { email: data.email },
+      where: { email: data.email.toLowerCase() },
       update: {
         name: data.name ?? undefined,
         profilePicUrl: data.picture ?? undefined,
@@ -221,11 +258,11 @@ export class AuthService {
         authProvider: 'GOOGLE',
       },
       create: {
-        email: data.email,
+        email: data.email.toLowerCase(),
         name: data.name ?? data.email.split('@')[0],
         profilePicUrl: data.picture ?? undefined,
         googleId: data.id ?? undefined,
-        password: '__google_oauth__',
+        password: googlePasswordHash,
         authProvider: 'GOOGLE',
         role: 'USER',
       },
@@ -237,7 +274,7 @@ export class AuthService {
   async refreshAccessToken(refreshToken: string) {
     try {
       const payload = await this.jwtService.verifyAsync(refreshToken, {
-        secret: process.env.JWT_REFRESH_SECRET || 'dev-refresh-secret',
+        secret: getRequiredSecret('JWT_REFRESH_SECRET'),
       });
 
       if (payload.type !== 'refresh') {
@@ -256,7 +293,10 @@ export class AuthService {
         throw new UnauthorizedException('Refresh token expired');
       }
 
-      const valid = await verifyHashedPassword(refreshToken, user.refreshTokenHash);
+      const valid = await verifyHashedPassword(
+        refreshToken,
+        user.refreshTokenHash,
+      );
       if (!valid) {
         throw new UnauthorizedException('Invalid refresh token');
       }

@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
   Param,
   Patch,
@@ -71,11 +72,18 @@ export class RewardsController {
   @UseGuards(JwtAuthGuard)
   listByUser(
     @Param('userId') userId: string,
+    @CurrentUser('id') currentUserId: string,
+    @CurrentUser('role') currentUserRole: string,
     @Query('search') search?: string,
     @Query('sort') sort?: string,
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
   ) {
+    const isAdmin = ['ADMIN', 'SUPER_ADMIN'].includes(currentUserRole);
+    if (!isAdmin && userId !== currentUserId) {
+      throw new ForbiddenException('You can only view your own rewards');
+    }
+
     return this.rewardsService.listUserRewards(userId, {
       search,
       sort,

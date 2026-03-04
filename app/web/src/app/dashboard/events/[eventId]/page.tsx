@@ -358,7 +358,10 @@ export default function EventDetailPage() {
                 disabled={!user || !comment.trim() || postCommentMutation.isPending}
                 onClick={() => {
                   if (!user || !comment.trim()) return;
-                  postCommentMutation.mutate({ marketId: eventId, userId: user.id, message: comment.trim() });
+                  postCommentMutation.mutate({
+                    marketId: eventId,
+                    message: comment.trim(),
+                  });
                   setComment("");
                 }}
               >

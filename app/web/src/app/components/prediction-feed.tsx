@@ -268,7 +268,6 @@ export default function PredictionsFeed({ selectedCategory, searchTerm }: Predic
         : new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
       options,
       eventIconUrl: newIcon,
-      createdById: user.id,
     });
 
     setNewTitle("");

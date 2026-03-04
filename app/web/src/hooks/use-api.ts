@@ -158,8 +158,16 @@ export function usePrediction(predictionId?: string) {
 export function usePostComment() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ marketId, userId, message }: { marketId: string; userId: string; message: string }) => {
-      const { data } = await api.post(`/markets/${marketId}/comments`, { userId, message });
+    mutationFn: async ({
+      marketId,
+      message,
+    }: {
+      marketId: string;
+      message: string;
+    }) => {
+      const { data } = await api.post(`/markets/${marketId}/comments`, {
+        message,
+      });
       return data;
     },
     onSuccess: (_, vars) => {

@@ -1,9 +1,16 @@
-import { Controller, Get, Param, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  ForbiddenException,
+  Get,
+  Param,
+  UseGuards,
+} from '@nestjs/common';
 import { UsersService } from './users.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { Query } from '@nestjs/common';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
 @Controller('users')
 export class UsersController {
@@ -27,7 +34,15 @@ export class UsersController {
 
   @Get(':id/points')
   @UseGuards(JwtAuthGuard)
-  getPoints(@Param('id') id: string) {
+  getPoints(
+    @Param('id') id: string,
+    @CurrentUser('id') currentUserId: string,
+    @CurrentUser('role') currentUserRole: string,
+  ) {
+    const isAdmin = ['ADMIN', 'SUPER_ADMIN'].includes(currentUserRole);
+    if (!isAdmin && id !== currentUserId) {
+      throw new ForbiddenException('You can only view your own points');
+    }
     return this.usersService.getUserPoints(id);
   }
 }

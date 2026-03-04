@@ -1,12 +1,14 @@
-import { IsDateString, IsOptional, IsString } from 'class-validator';
+import { IsDateString, IsOptional, IsString, MaxLength } from 'class-validator';
 
 export class UpdateMarketDto {
   @IsOptional()
   @IsString()
+  @MaxLength(180)
   title?: string;
 
   @IsOptional()
   @IsString()
+  @MaxLength(2000)
   description?: string;
 
   @IsOptional()
@@ -15,5 +17,6 @@ export class UpdateMarketDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(2048)
   eventIconUrl?: string;
 }

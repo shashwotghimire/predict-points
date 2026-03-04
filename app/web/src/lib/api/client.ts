@@ -1,43 +1,24 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from "axios";
-import {
-  clearAuthTokens,
-  getAccessToken,
-  getRefreshToken,
-  setAuthTokens,
-} from "@/lib/api/auth-tokens";
+import { clearAuthTokens, setAuthTokens } from "@/lib/api/auth-tokens";
 import { apiBaseUrl } from "@/lib/api/config";
 
 type RetriableRequestConfig = InternalAxiosRequestConfig & { _retry?: boolean };
 
-let refreshPromise: Promise<string | null> | null = null;
+let refreshPromise: Promise<boolean> | null = null;
 
 const createRefreshPromise = async () => {
-  const refreshToken = getRefreshToken();
-  if (!refreshToken) return null;
-
   try {
-    const { data } = await api.post(
-      "/auth/refresh",
-      { refreshToken },
-      {
-        params: { transport: "body" },
-        headers: { "x-auth-transport": "body" },
-      },
-    );
-
-    const nextAccess = data?.accessToken as string | undefined;
-    const nextRefresh = data?.refreshToken as string | undefined;
-
-    if (!nextAccess || !nextRefresh) {
-      clearAuthTokens();
-      return null;
+    const { data } = await api.post("/auth/refresh");
+    if (data?.accessToken || data?.refreshToken) {
+      setAuthTokens({
+        accessToken: (data?.accessToken as string | undefined) ?? null,
+        refreshToken: (data?.refreshToken as string | undefined) ?? null,
+      });
     }
-
-    setAuthTokens({ accessToken: nextAccess, refreshToken: nextRefresh });
-    return nextAccess;
+    return true;
   } catch {
     clearAuthTokens();
-    return null;
+    return false;
   }
 };
 
@@ -47,15 +28,6 @@ export const api = axios.create({
     "Content-Type": "application/json",
   },
   withCredentials: true,
-});
-
-api.interceptors.request.use((config) => {
-  const accessToken = getAccessToken();
-  if (accessToken) {
-    config.headers.Authorization = `Bearer ${accessToken}`;
-    config.headers["x-auth-transport"] = "body";
-  }
-  return config;
 });
 
 api.interceptors.response.use(
@@ -83,14 +55,11 @@ api.interceptors.response.use(
       });
     }
 
-    const nextAccess = await refreshPromise;
-    if (!nextAccess) {
+    const refreshed = await refreshPromise;
+    if (!refreshed) {
       return Promise.reject(error);
     }
 
-    originalRequest.headers = originalRequest.headers || {};
-    originalRequest.headers.Authorization = `Bearer ${nextAccess}`;
-    originalRequest.headers["x-auth-transport"] = "body";
     return api(originalRequest);
   },
 );

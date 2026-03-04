@@ -15,6 +15,7 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { CurrentUser } from './decorators/current-user.decorator';
 import type { Response } from 'express';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
+import { parseBoolean, parsePositiveInt } from '../../common/security/env';
 
 @Controller('auth')
 export class AuthController {
@@ -24,6 +25,12 @@ export class AuthController {
     req: Response['req'],
     transport?: string,
   ): boolean {
+    const allowBodyTransport = parseBoolean(
+      process.env.AUTH_ALLOW_BODY_TOKENS,
+      false,
+    );
+    if (!allowBodyTransport) return false;
+
     if (transport === 'body') return true;
     if (req?.headers?.['x-auth-transport'] === 'body') return true;
     return req?.cookies?.oauth_transport === 'body';
@@ -31,14 +38,19 @@ export class AuthController {
 
   private cookieSettings() {
     const secure =
-      process.env.COOKIE_SECURE === 'true' || process.env.NODE_ENV === 'production';
-    const sameSite = (process.env.COOKIE_SAMESITE || (secure ? 'none' : 'lax')) as
+      process.env.COOKIE_SECURE === 'true' ||
+      process.env.NODE_ENV === 'production';
+    const sameSite = (process.env.COOKIE_SAMESITE || 'lax') as
       | 'lax'
       | 'none'
       | 'strict';
     const domain = process.env.COOKIE_DOMAIN || undefined;
 
-    return { secure, sameSite, domain };
+    // SameSite=None requires Secure, otherwise browsers reject the cookie.
+    const normalizedSameSite =
+      sameSite === 'none' && !secure ? 'lax' : sameSite;
+
+    return { secure, sameSite: normalizedSameSite, domain };
   }
 
   private setAuthCookies(
@@ -46,13 +58,22 @@ export class AuthController {
     tokens: { accessToken: string; refreshToken: string },
   ) {
     const { secure, sameSite, domain } = this.cookieSettings();
+    const accessMaxAgeMs = parsePositiveInt(
+      process.env.ACCESS_TOKEN_TTL_MS,
+      15 * 60 * 1000,
+    );
+    const refreshMaxAgeMs = parsePositiveInt(
+      process.env.REFRESH_TOKEN_TTL_MS,
+      30 * 24 * 60 * 60 * 1000,
+    );
+
     res.cookie('access_token', tokens.accessToken, {
       httpOnly: true,
       secure,
       sameSite,
       domain,
       path: '/',
-      maxAge: 1000 * 60 * 15,
+      maxAge: accessMaxAgeMs,
     });
 
     res.cookie('refresh_token', tokens.refreshToken, {
@@ -60,17 +81,46 @@ export class AuthController {
       secure,
       sameSite,
       domain,
+      path: '/api/v1/auth',
+      maxAge: refreshMaxAgeMs,
+    });
+  }
+
+  private clearOauthCookies(res: Response) {
+    const { secure, sameSite, domain } = this.cookieSettings();
+    res.clearCookie('oauth_state', {
       path: '/',
-      maxAge: 1000 * 60 * 60 * 24 * 30,
+      domain,
+      secure,
+      sameSite,
+      httpOnly: true,
+    });
+    res.clearCookie('oauth_transport', {
+      path: '/',
+      domain,
+      secure,
+      sameSite,
+      httpOnly: true,
     });
   }
 
   private clearAuthCookies(res: Response) {
-    const { domain } = this.cookieSettings();
-    res.clearCookie('access_token', { path: '/', domain });
-    res.clearCookie('refresh_token', { path: '/', domain });
-    res.clearCookie('oauth_state', { path: '/', domain });
-    res.clearCookie('oauth_transport', { path: '/', domain });
+    const { secure, sameSite, domain } = this.cookieSettings();
+    res.clearCookie('access_token', {
+      path: '/',
+      domain,
+      secure,
+      sameSite,
+      httpOnly: true,
+    });
+    res.clearCookie('refresh_token', {
+      path: '/api/v1/auth',
+      domain,
+      secure,
+      sameSite,
+      httpOnly: true,
+    });
+    this.clearOauthCookies(res);
   }
 
   @Post('register')
@@ -100,9 +150,15 @@ export class AuthController {
   }
 
   @Get('google/start')
-  googleStart(@Query('transport') transport: string | undefined, @Res() res: Response) {
+  googleStart(
+    @Query('transport') transport: string | undefined,
+    @Res() res: Response,
+  ) {
     const state = this.authService.generateOauthState();
     const { secure, sameSite, domain } = this.cookieSettings();
+    const oauthTransport = this.shouldUseBodyTransport(res.req, transport)
+      ? 'body'
+      : 'cookie';
     res.cookie('oauth_state', state, {
       httpOnly: true,
       secure,
@@ -111,7 +167,7 @@ export class AuthController {
       path: '/',
       maxAge: 1000 * 60 * 10,
     });
-    res.cookie('oauth_transport', transport === 'body' ? 'body' : 'cookie', {
+    res.cookie('oauth_transport', oauthTransport, {
       httpOnly: true,
       secure,
       sameSite,
@@ -137,6 +193,7 @@ export class AuthController {
 
     const result = await this.authService.completeGoogleAuth(code);
     this.setAuthCookies(res, result);
+    this.clearOauthCookies(res);
 
     const frontend = process.env.FRONTEND_URL || 'http://localhost:3000';
     const useBodyTransport = this.shouldUseBodyTransport(res.req);
@@ -159,7 +216,7 @@ export class AuthController {
     const result = await this.authService.refreshAccessToken(refreshToken);
     this.setAuthCookies(res, result);
     const useBodyTransport = this.shouldUseBodyTransport(res.req, transport);
-    if (useBodyTransport || body?.refreshToken) return result;
+    if (useBodyTransport) return result;
     return { user: result.user };
   }
 

@@ -18,6 +18,7 @@ import { CreateCommentDto } from './dto/create-comment.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
 @Controller('markets')
 export class MarketsController {
@@ -40,8 +41,11 @@ export class MarketsController {
   @Post()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN', 'SUPER_ADMIN')
-  createMarket(@Body() dto: CreateMarketDto) {
-    return this.marketsService.createMarket(dto);
+  createMarket(
+    @Body() dto: CreateMarketDto,
+    @CurrentUser('id') userId: string,
+  ) {
+    return this.marketsService.createMarket(dto, userId);
   }
 
   @Patch(':id')
@@ -79,7 +83,14 @@ export class MarketsController {
 
   @Post(':id/comments')
   @UseGuards(JwtAuthGuard)
-  createComment(@Param('id') id: string, @Body() dto: CreateCommentDto) {
-    return this.marketsService.createComment(id, dto);
+  createComment(
+    @Param('id') id: string,
+    @Body() dto: CreateCommentDto,
+    @CurrentUser('id') userId: string,
+  ) {
+    return this.marketsService.createComment(id, {
+      ...dto,
+      userId,
+    });
   }
 }

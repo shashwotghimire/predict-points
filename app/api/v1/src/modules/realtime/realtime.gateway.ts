@@ -26,6 +26,8 @@ export class RealtimeGateway
   implements OnGatewayConnection, OnGatewayDisconnect
 {
   private readonly logger = new Logger(RealtimeGateway.name);
+  private readonly shouldLogWs =
+    process.env.WS_LOGS === 'true' || process.env.NODE_ENV !== 'production';
 
   @WebSocketServer()
   private server!: Server;
@@ -33,24 +35,27 @@ export class RealtimeGateway
   handleConnection(client: Socket) {
     const readyPayload = { timestamp: new Date().toISOString() };
     client.emit('sync:ready', readyPayload);
-    this.logger.log(
-      `[ws] client connected id=${client.id} transport=${client.conn.transport.name} connected=${this.connectedClients()}`,
-    );
-    this.logger.log(
-      `[ws] tx event=sync:ready clientId=${client.id} payload=${JSON.stringify(readyPayload)}`,
-    );
+    if (this.shouldLogWs) {
+      this.logger.log(
+        `[ws] client connected id=${client.id} transport=${client.conn.transport.name} connected=${this.connectedClients()}`,
+      );
+    }
   }
 
   handleDisconnect(client: Socket) {
-    this.logger.log(
-      `[ws] client disconnected id=${client.id} connected=${this.connectedClients()}`,
-    );
+    if (this.shouldLogWs) {
+      this.logger.log(
+        `[ws] client disconnected id=${client.id} connected=${this.connectedClients()}`,
+      );
+    }
   }
 
   emitSync(payload: RealtimeSyncPayload) {
-    this.logger.log(
-      `[ws] tx event=sync clients=${this.connectedClients()} payload=${JSON.stringify(payload)}`,
-    );
+    if (this.shouldLogWs) {
+      this.logger.log(
+        `[ws] tx event=sync clients=${this.connectedClients()} topics=${payload.topics.join(',')}`,
+      );
+    }
     this.server.emit('sync', payload);
   }
 

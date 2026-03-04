@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { CreatePredictionDto } from './dto/create-prediction.dto';
 import { MarketsService } from '../markets/markets.service';
@@ -20,7 +24,10 @@ export class PredictionsService {
     });
   }
 
-  async getById(id: string) {
+  async getById(
+    id: string,
+    currentUser: { currentUserId: string; currentUserRole: string },
+  ) {
     const prediction = await this.prisma.prediction.findUnique({
       where: { id },
       include: {
@@ -30,6 +37,12 @@ export class PredictionsService {
     });
 
     if (!prediction) throw new NotFoundException('Prediction not found');
+    const isAdmin = ['ADMIN', 'SUPER_ADMIN'].includes(
+      currentUser.currentUserRole,
+    );
+    if (!isAdmin && prediction.userId !== currentUser.currentUserId) {
+      throw new ForbiddenException('You can only view your own predictions');
+    }
     return prediction;
   }
 
@@ -43,24 +56,46 @@ export class PredictionsService {
       pageSize?: number;
     },
   ) {
-    const page = query.page ?? 1;
-    const pageSize = query.pageSize ?? 10;
+    const page =
+      Number.isFinite(query.page) && (query.page ?? 0) > 0
+        ? Math.floor(query.page as number)
+        : 1;
+    const pageSize =
+      Number.isFinite(query.pageSize) && (query.pageSize ?? 0) > 0
+        ? Math.min(Math.floor(query.pageSize as number), 100)
+        : 10;
+    const normalizedStatus = query.status?.toUpperCase();
+    const statusFilter =
+      normalizedStatus &&
+      Object.values(PredictionStatus).includes(
+        normalizedStatus as PredictionStatus,
+      )
+        ? (normalizedStatus as PredictionStatus)
+        : undefined;
 
     const where = {
       userId,
-      status: query.status
-        ? (query.status.toUpperCase() as PredictionStatus)
-        : undefined,
+      status: statusFilter,
       OR: query.search
         ? [
             {
               market: {
-                is: { title: { contains: query.search } },
+                is: {
+                  title: {
+                    contains: query.search,
+                    mode: 'insensitive' as const,
+                  },
+                },
               },
             },
             {
               option: {
-                is: { label: { contains: query.search } },
+                is: {
+                  label: {
+                    contains: query.search,
+                    mode: 'insensitive' as const,
+                  },
+                },
               },
             },
           ]

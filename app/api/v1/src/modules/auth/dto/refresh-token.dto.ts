@@ -1,7 +1,9 @@
-import { IsOptional, IsString } from 'class-validator';
+import { IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 
 export class RefreshTokenDto {
   @IsOptional()
   @IsString()
+  @MinLength(20)
+  @MaxLength(4096)
   refreshToken?: string;
 }

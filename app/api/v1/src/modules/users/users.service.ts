@@ -36,7 +36,6 @@ export class UsersService {
       select: {
         id: true,
         name: true,
-        email: true,
         points: true,
         createdAt: true,
       },
@@ -82,7 +81,7 @@ export class UsersService {
       return {
         rank: index + 1,
         userId: user.id,
-        username: user.name?.trim() || user.email.split('@')[0],
+        username: user.name?.trim() || `User ${index + 1}`,
         points: user.points,
         accuracy,
         wonPredictions,

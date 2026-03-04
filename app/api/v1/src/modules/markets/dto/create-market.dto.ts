@@ -1,20 +1,25 @@
 import {
   IsArray,
   IsDateString,
+  IsEnum,
   IsInt,
+  IsNotEmpty,
   IsOptional,
   IsString,
+  MaxLength,
   Max,
   Min,
+  ArrayMaxSize,
+  ArrayMinSize,
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-
-type MarketCategory = 'TRENDING' | 'POLITICS' | 'SPORTS';
-type MarketType = 'YES_NO' | 'MULTI_4' | 'OVER_UNDER';
+import { MarketCategory, MarketType } from '../../../../generated/prisma/enums';
 
 export class CreateMarketOptionDto {
   @IsString()
+  @IsNotEmpty()
+  @MaxLength(80)
   label: string;
 
   @IsInt()
@@ -25,15 +30,19 @@ export class CreateMarketOptionDto {
 
 export class CreateMarketDto {
   @IsString()
+  @IsNotEmpty()
+  @MaxLength(180)
   title: string;
 
   @IsString()
+  @IsNotEmpty()
+  @MaxLength(2000)
   description: string;
 
-  @IsString()
+  @IsEnum(MarketCategory)
   category: MarketCategory;
 
-  @IsString()
+  @IsEnum(MarketType)
   type: MarketType;
 
   @IsDateString()
@@ -41,12 +50,12 @@ export class CreateMarketDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(2048)
   eventIconUrl?: string;
 
-  @IsString()
-  createdById: string;
-
   @IsArray()
+  @ArrayMinSize(2)
+  @ArrayMaxSize(4)
   @ValidateNested({ each: true })
   @Type(() => CreateMarketOptionDto)
   options: CreateMarketOptionDto[];
