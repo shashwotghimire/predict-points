@@ -16,8 +16,9 @@ Monorepo with:
    - `CORS_ORIGIN` (comma-separated trusted origins)
 4. Use HTTPS in production:
    - Set `COOKIE_SECURE=true`
-   - Set `COOKIE_SAMESITE=lax` unless you explicitly need cross-site cookies
-5. Keep `AUTH_ALLOW_BODY_TOKENS=false` in production.
+   - Set `COOKIE_SAMESITE=lax` unless the frontend and API are on different sites
+   - If the frontend and API are on different sites, set `COOKIE_SAMESITE=none` and `COOKIE_PARTITIONED=true`
+5. Keep auth tokens in `HttpOnly` cookies only; do not expose session credentials to browser JavaScript.
 6. Keep `ENABLE_SAMPLE_DATA=false` in production.
 7. Only use `BOOTSTRAP_ADMIN=true` for controlled initial setup.
 

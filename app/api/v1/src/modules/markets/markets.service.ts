@@ -287,69 +287,98 @@ export class MarketsService {
 
   async declare(id: string, dto: DeclareMarketDto) {
     const market = await this.getMarket(id);
-    const declaredOption = await this.prisma.option.findFirst({
-      where: { id: dto.optionId, marketId: id },
-    });
-    if (!declaredOption) {
-      throw new BadRequestException(
-        'Declared option does not belong to this market',
-      );
-    }
+    const settlement = await this.prisma.$transaction(async (tx) => {
+      const declaredOption = await tx.option.findFirst({
+        where: { id: dto.optionId, marketId: id },
+      });
+      if (!declaredOption) {
+        throw new BadRequestException(
+          'Declared option does not belong to this market',
+        );
+      }
 
-    await this.prisma.market.update({
-      where: { id },
-      data: {
-        status: 'RESOLVED',
-        isDeclared: true,
-        declaredAt: new Date(),
-        declaredOptionId: dto.optionId,
-      },
-    });
-
-    const predictions = await this.prisma.prediction.findMany({
-      where: { marketId: id, status: 'ACTIVE' },
-    });
-
-    for (const prediction of predictions) {
-      const won = prediction.optionId === dto.optionId;
-      await this.prisma.prediction.update({
-        where: { id: prediction.id },
+      const resolvedAt = new Date();
+      await tx.market.update({
+        where: { id },
         data: {
-          status: won ? PredictionStatus.WON : PredictionStatus.LOST,
-          isWinning: won,
-          resolvedAt: new Date(),
+          status: 'RESOLVED',
+          isDeclared: true,
+          declaredAt: resolvedAt,
+          declaredOptionId: dto.optionId,
         },
       });
 
-      if (won) {
-        await this.prisma.user.update({
+      const predictions = await tx.prediction.findMany({
+        where: { marketId: id, status: 'ACTIVE' },
+      });
+
+      const participantUserIds = new Set<string>();
+      const winnerUserIds = new Set<string>();
+
+      for (const prediction of predictions) {
+        participantUserIds.add(prediction.userId);
+        const won = prediction.optionId === dto.optionId;
+
+        await tx.prediction.update({
+          where: { id: prediction.id },
+          data: {
+            status: won ? PredictionStatus.WON : PredictionStatus.LOST,
+            isWinning: won,
+            resolvedAt,
+          },
+        });
+
+        if (!won) {
+          continue;
+        }
+
+        winnerUserIds.add(prediction.userId);
+        await tx.user.update({
           where: { id: prediction.userId },
           data: { points: { increment: prediction.potentialWinnings } },
         });
+        await tx.pointTransaction.create({
+          data: {
+            userId: prediction.userId,
+            amount: prediction.potentialWinnings,
+            type: 'WIN',
+            reason: `Won market ${market.title}`,
+          },
+        });
       }
-    }
 
-    await this.prisma.activityLog.create({
-      data: {
-        type: 'EVENT_DECLARED',
-        marketId: id,
-        message: `Event declared: ${market.title}`,
-      },
+      await tx.activityLog.create({
+        data: {
+          type: 'EVENT_DECLARED',
+          marketId: id,
+          message: `Event declared: ${market.title}`,
+        },
+      });
+
+      return {
+        participantUserIds: [...participantUserIds],
+        winnerUserIds: [...winnerUserIds],
+      };
     });
 
     const declaredMarket = await this.getMarket(id);
     this.realtime.broadcast(
-      [
-        'markets',
-        'market',
-        'activity',
-        'leaderboard',
-        'user-points',
-        'user-predictions',
-        'admin-users',
-      ],
+      ['markets', 'market', 'activity', 'leaderboard', 'admin-users'],
       { marketId: id },
     );
+
+    const winners = new Set(settlement.winnerUserIds);
+    for (const userId of settlement.participantUserIds) {
+      const topics = ['user-predictions'] as const;
+      this.realtime.broadcast(
+        winners.has(userId) ? [...topics, 'user-points'] : [...topics],
+        {
+          marketId: id,
+          userId,
+        },
+      );
+    }
+
     return declaredMarket;
   }
 
@@ -454,21 +483,31 @@ export class MarketsService {
       input.pointsStaked,
     );
 
-    const prediction = await this.prisma.prediction.create({
-      data: {
-        userId: input.userId,
-        marketId: input.marketId,
-        optionId: input.optionId,
-        pointsStaked: input.pointsStaked,
-        potentialWinnings,
-      },
-      include: {
-        option: true,
-        market: {
-          include: { options: true },
+    let prediction;
+    try {
+      prediction = await this.prisma.prediction.create({
+        data: {
+          userId: input.userId,
+          marketId: input.marketId,
+          optionId: input.optionId,
+          pointsStaked: input.pointsStaked,
+          potentialWinnings,
         },
-      },
-    });
+        include: {
+          option: true,
+          market: {
+            include: { options: true },
+          },
+        },
+      });
+    } catch (error) {
+      if (this.isUniqueConstraintError(error)) {
+        throw new ConflictException(
+          'Prediction already submitted for this event',
+        );
+      }
+      throw error;
+    }
 
     await this.prisma.activityLog.create({
       data: {
@@ -488,5 +527,13 @@ export class MarketsService {
     );
 
     return prediction;
+  }
+
+  private isUniqueConstraintError(error: unknown): error is { code: string } {
+    if (!error || typeof error !== 'object' || !('code' in error)) {
+      return false;
+    }
+
+    return (error as { code?: unknown }).code === 'P2002';
   }
 }

@@ -1,18 +1,26 @@
-import { Test, TestingModule } from '@nestjs/testing';
-import { Cloudinary } from './cloudinary';
+import { v2 as cloudinary } from 'cloudinary';
+import { CloudinaryProvider } from './cloudinary';
+
+jest.mock('cloudinary', () => ({
+  v2: {
+    config: jest.fn(() => 'configured-cloudinary'),
+  },
+}));
 
 describe('Cloudinary', () => {
-  let provider: Cloudinary;
+  it('builds the cloudinary provider configuration from env vars', () => {
+    process.env.CLOUDINARY_NAME = 'demo-cloud';
+    process.env.CLOUDINARY_API_KEY = 'key-123';
+    process.env.CLOUDINARY_API_SECRET = 'secret-123';
 
-  beforeEach(async () => {
-    const module: TestingModule = await Test.createTestingModule({
-      providers: [Cloudinary],
-    }).compile();
+    const configured = CloudinaryProvider.useFactory();
 
-    provider = module.get<Cloudinary>(Cloudinary);
-  });
-
-  it('should be defined', () => {
-    expect(provider).toBeDefined();
+    expect(CloudinaryProvider.provide).toBe('CLOUDINARY');
+    expect(configured).toBe('configured-cloudinary');
+    expect(cloudinary.config).toHaveBeenCalledWith({
+      cloud_name: 'demo-cloud',
+      api_key: 'key-123',
+      api_secret: 'secret-123',
+    });
   });
 });

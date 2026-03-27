@@ -1,13 +1,10 @@
 import type React from "react";
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
+import { RealtimeSync } from "./components/realtime-sync";
 import { AuthProvider } from "./contexts/auth-context";
 import Providers from "./providers";
 import "./globals.css";
-
-const _geist = Geist({ subsets: ["latin"] });
-const _geistMono = Geist_Mono({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: "PredictPoints - Forecast Events, Earn Points",
@@ -33,6 +30,7 @@ export default function RootLayout({
         <Providers>
           <AuthProvider>
             {children}
+            <RealtimeSync />
             {analyticsEnabled ? <Analytics /> : null}
           </AuthProvider>
         </Providers>

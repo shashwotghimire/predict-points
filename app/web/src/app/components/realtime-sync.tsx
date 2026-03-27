@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { io } from "socket.io-client";
+import { useAuth } from "@/app/contexts/auth-context";
 import { apiOrigin } from "@/lib/api/config";
 import type { RealtimeSyncPayload, RealtimeTopic } from "@/lib/realtime/types";
 
@@ -79,8 +80,13 @@ function invalidateByTopic(
 
 export function RealtimeSync() {
   const queryClient = useQueryClient();
+  const { user, isLoading } = useAuth();
 
   useEffect(() => {
+    if (isLoading) {
+      return;
+    }
+
     if (shouldLogWs) {
       console.info("[ws] connecting", { origin: apiOrigin, path: "/ws" });
     }
@@ -88,7 +94,6 @@ export function RealtimeSync() {
     const socket = io(apiOrigin, {
       path: "/ws",
       withCredentials: true,
-      transports: ["websocket"],
     });
 
     socket.on("connect", () => {
@@ -132,7 +137,7 @@ export function RealtimeSync() {
       }
       socket.disconnect();
     };
-  }, [queryClient]);
+  }, [isLoading, queryClient, user?.id, user?.role]);
 
   return null;
 }

@@ -6,7 +6,6 @@ import { createContext, useContext, useMemo, useSyncExternalStore } from "react"
 import { usePathname } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api/client";
-import { clearAuthTokens } from "@/lib/api/client";
 import { apiOrigin } from "@/lib/api/config";
 
 export type UserRole = "ADMIN" | "USER" | "SUPER_ADMIN" | "MODERATOR";
@@ -72,7 +71,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           const { data } = await api.get("/auth/me");
           return data as User;
         } catch {
-          clearAuthTokens();
           return null;
         }
       }
@@ -123,7 +121,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       await api.post("/auth/logout");
     } finally {
-      clearAuthTokens();
       queryClient.setQueryData(["auth", "me"], null);
       queryClient.invalidateQueries({ queryKey: ["auth"] });
     }

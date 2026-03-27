@@ -141,22 +141,37 @@ export class RewardsService {
   }
 
   async redeem(userId: string, dto: RedeemRewardDto) {
-    const user = await this.prisma.user.findUnique({ where: { id: userId } });
-    if (!user) throw new BadRequestException('User not found');
-    const reward = await this.prisma.reward.findUnique({
-      where: { id: dto.rewardId },
-    });
-    if (!reward || !reward.isActive) {
-      throw new BadRequestException('Reward not available');
-    }
+    const redemption = await this.prisma.$transaction(async (tx) => {
+      const reward = await tx.reward.findUnique({
+        where: { id: dto.rewardId },
+      });
+      if (!reward || !reward.isActive) {
+        throw new BadRequestException('Reward not available');
+      }
 
-    if (user.points < reward.pointsRequired) {
-      throw new BadRequestException('Not enough points');
-    }
-    const redemptionData = this.buildRedemptionData(reward.type, dto);
+      const redemptionData = this.buildRedemptionData(reward.type, dto);
+      const debitResult = await tx.user.updateMany({
+        where: {
+          id: userId,
+          points: { gte: reward.pointsRequired },
+        },
+        data: {
+          points: { decrement: reward.pointsRequired },
+        },
+      });
 
-    const [redemption] = await this.prisma.$transaction([
-      this.prisma.rewardRedemption.create({
+      if (debitResult.count === 0) {
+        const user = await tx.user.findUnique({
+          where: { id: userId },
+          select: { id: true },
+        });
+        if (!user) {
+          throw new BadRequestException('User not found');
+        }
+        throw new BadRequestException('Not enough points');
+      }
+
+      const createdRedemption = await tx.rewardRedemption.create({
         data: {
           userId,
           rewardId: reward.id,
@@ -164,27 +179,27 @@ export class RewardsService {
           redemptionData,
           pointsSpent: reward.pointsRequired,
         },
-      }),
-      this.prisma.user.update({
-        where: { id: userId },
-        data: { points: { decrement: reward.pointsRequired } },
-      }),
-      this.prisma.activityLog.create({
+      });
+
+      await tx.activityLog.create({
         data: {
           type: 'REWARD_REDEEMED',
           userId,
           message: `Reward redeemed: ${reward.name} [${reward.type}] (${reward.pointsRequired} points)`,
         },
-      }),
-      this.prisma.pointTransaction.create({
+      });
+
+      await tx.pointTransaction.create({
         data: {
           userId,
           amount: -reward.pointsRequired,
           type: 'PENALTY',
           reason: `Redeemed reward ${reward.name}`,
         },
-      }),
-    ]);
+      });
+
+      return createdRedemption;
+    });
 
     this.realtime.broadcast(
       [

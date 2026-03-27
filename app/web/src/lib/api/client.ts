@@ -1,5 +1,4 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from "axios";
-import { clearAuthTokens, setAuthTokens } from "@/lib/api/auth-tokens";
 import { apiBaseUrl } from "@/lib/api/config";
 
 type RetriableRequestConfig = InternalAxiosRequestConfig & { _retry?: boolean };
@@ -8,16 +7,9 @@ let refreshPromise: Promise<boolean> | null = null;
 
 const createRefreshPromise = async () => {
   try {
-    const { data } = await api.post("/auth/refresh");
-    if (data?.accessToken || data?.refreshToken) {
-      setAuthTokens({
-        accessToken: (data?.accessToken as string | undefined) ?? null,
-        refreshToken: (data?.refreshToken as string | undefined) ?? null,
-      });
-    }
+    await api.post("/auth/refresh");
     return true;
   } catch {
-    clearAuthTokens();
     return false;
   }
 };
@@ -43,7 +35,6 @@ api.interceptors.response.use(
     }
 
     if ((originalRequest.url || "").includes("/auth/refresh")) {
-      clearAuthTokens();
       return Promise.reject(error);
     }
 
@@ -63,5 +54,3 @@ api.interceptors.response.use(
     return api(originalRequest);
   },
 );
-
-export { setAuthTokens, clearAuthTokens };
