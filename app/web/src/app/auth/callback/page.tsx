@@ -26,6 +26,7 @@ function OAuthCallbackContent() {
         const { data } = await api.get("/auth/me");
         if (!isActive) return;
         queryClient.setQueryData(["auth", "me"], data);
+        void queryClient.invalidateQueries({ queryKey: ["auth", "me"] });
 
         const role =
           typeof data === "object" &&
