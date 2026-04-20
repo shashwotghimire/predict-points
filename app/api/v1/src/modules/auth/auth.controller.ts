@@ -20,6 +20,10 @@ import { parseBoolean, parsePositiveInt } from '../../common/security/env';
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
+  private frontendBaseUrl() {
+    return process.env.FRONTEND_URL || 'http://localhost:3000';
+  }
+
   private cookieSettings() {
     const secure =
       process.env.COOKIE_SECURE === 'true' ||
@@ -138,17 +142,25 @@ export class AuthController {
     @Query('state') state: string,
     @Res() res: Response,
   ) {
+    const callbackUrl = new URL('/auth/callback', this.frontendBaseUrl());
     const cookieState = res.req.cookies?.oauth_state;
-    if (!cookieState || cookieState !== state) {
-      throw new UnauthorizedException('Invalid OAuth state');
+    if (!cookieState || !state || cookieState !== state || !code) {
+      this.clearOauthCookies(res);
+      callbackUrl.searchParams.set('status', 'error');
+      return res.redirect(callbackUrl.toString());
     }
 
-    const result = await this.authService.completeGoogleAuth(code);
-    this.setAuthCookies(res, result);
-    this.clearOauthCookies(res);
-
-    const frontend = process.env.FRONTEND_URL || 'http://localhost:3000';
-    return res.redirect(`${frontend}/dashboard`);
+    try {
+      const result = await this.authService.completeGoogleAuth(code);
+      this.setAuthCookies(res, result);
+      this.clearOauthCookies(res);
+      callbackUrl.searchParams.set('status', 'success');
+      return res.redirect(callbackUrl.toString());
+    } catch {
+      this.clearOauthCookies(res);
+      callbackUrl.searchParams.set('status', 'error');
+      return res.redirect(callbackUrl.toString());
+    }
   }
 
   @Post('refresh')

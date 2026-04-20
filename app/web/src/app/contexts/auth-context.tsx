@@ -51,6 +51,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     pathname === "/landing" ||
     pathname === "/login" ||
     pathname === "/admin/login" ||
+    pathname === "/auth/callback" ||
     pathname === "/register";
 
   const meQuery = useQuery({
