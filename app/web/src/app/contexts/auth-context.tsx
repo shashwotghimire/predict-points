@@ -99,7 +99,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
       return data as AuthApiResponse;
     },
-    onSuccess: async () => {
+    onSuccess: async (data) => {
+      queryClient.setQueryData(["auth", "me"], data.user);
       await queryClient.invalidateQueries({ queryKey: ["auth", "me"] });
     },
   });

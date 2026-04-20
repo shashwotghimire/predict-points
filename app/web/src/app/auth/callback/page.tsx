@@ -1,11 +1,13 @@
 "use client";
 
-import { useEffect } from "react";
+import { Suspense, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api/client";
 
-export default function OAuthCallbackPage() {
+function OAuthCallbackContent() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const searchParams = useSearchParams();
   const status = searchParams.get("status");
 
@@ -23,6 +25,7 @@ export default function OAuthCallbackPage() {
       try {
         const { data } = await api.get("/auth/me");
         if (!isActive) return;
+        queryClient.setQueryData(["auth", "me"], data);
 
         const role =
           typeof data === "object" &&
@@ -49,7 +52,7 @@ export default function OAuthCallbackPage() {
     return () => {
       isActive = false;
     };
-  }, [router, status]);
+  }, [queryClient, router, status]);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background">
@@ -58,5 +61,22 @@ export default function OAuthCallbackPage() {
         <p className="mt-4 text-muted-foreground">Completing sign in...</p>
       </div>
     </div>
+  );
+}
+
+export default function OAuthCallbackPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center bg-background">
+          <div className="text-center">
+            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+            <p className="mt-4 text-muted-foreground">Completing sign in...</p>
+          </div>
+        </div>
+      }
+    >
+      <OAuthCallbackContent />
+    </Suspense>
   );
 }
