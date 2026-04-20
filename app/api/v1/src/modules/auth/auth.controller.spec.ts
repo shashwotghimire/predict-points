@@ -77,6 +77,18 @@ describe('AuthController', () => {
     );
   });
 
+  it('redirects Google callback failures when the oauth code is missing', async () => {
+    process.env.FRONTEND_URL = 'http://localhost:3000';
+    const response = makeResponse();
+    response.req.cookies.oauth_state = 'expected-state';
+
+    await controller.googleCallback(undefined as any, 'expected-state', response);
+
+    expect(response.redirect).toHaveBeenCalledWith(
+      'http://localhost:3000/auth/callback?status=error',
+    );
+  });
+
   it('redirects successful Google callbacks to frontend auth callback with success status', async () => {
     process.env.FRONTEND_URL = 'http://localhost:3000';
     authService.completeGoogleAuth.mockResolvedValue(authResult);
@@ -88,6 +100,19 @@ describe('AuthController', () => {
     expect(authService.completeGoogleAuth).toHaveBeenCalledWith('oauth-code');
     expect(response.redirect).toHaveBeenCalledWith(
       'http://localhost:3000/auth/callback?status=success',
+    );
+  });
+
+  it('redirects Google callback failures when oauth completion throws', async () => {
+    process.env.FRONTEND_URL = 'http://localhost:3000';
+    authService.completeGoogleAuth.mockRejectedValue(new Error('oauth failed'));
+    const response = makeResponse();
+    response.req.cookies.oauth_state = 'expected-state';
+
+    await controller.googleCallback('oauth-code', 'expected-state', response);
+
+    expect(response.redirect).toHaveBeenCalledWith(
+      'http://localhost:3000/auth/callback?status=error',
     );
   });
 });

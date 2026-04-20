@@ -3,18 +3,17 @@
 import { useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { api } from "@/lib/api/client";
-import type { User } from "@/app/contexts/auth-context";
 
 export default function OAuthCallbackPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const status = searchParams.get("status");
 
   useEffect(() => {
     let isActive = true;
 
     const completeLogin = async () => {
-      const status = searchParams.get("status");
-      if (status === "error") {
+      if (status !== "success") {
         if (isActive) {
           router.replace("/login?oauth=error");
         }
@@ -23,11 +22,18 @@ export default function OAuthCallbackPage() {
 
       try {
         const { data } = await api.get("/auth/me");
-        const user = data as User;
         if (!isActive) return;
 
+        const role =
+          typeof data === "object" &&
+          data !== null &&
+          "role" in data &&
+          typeof data.role === "string"
+            ? data.role
+            : null;
+
         const destination =
-          user.role === "ADMIN" || user.role === "SUPER_ADMIN"
+          role === "ADMIN" || role === "SUPER_ADMIN"
             ? "/admin"
             : "/dashboard";
         router.replace(destination);
@@ -43,7 +49,7 @@ export default function OAuthCallbackPage() {
     return () => {
       isActive = false;
     };
-  }, [router, searchParams]);
+  }, [router, status]);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background">
