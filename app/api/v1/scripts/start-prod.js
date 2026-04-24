@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+const { spawn } = require('child_process');
 const { existsSync } = require('fs');
 const { resolve } = require('path');
 
@@ -37,4 +38,3 @@ child.on('error', (error) => {
   console.error(`[start:prod] Failed to launch ${entrypoint}:`, error);
   process.exit(1);
 });
-require(entrypoint);
