@@ -18,7 +18,6 @@ function validateEnvironment(env: Record<string, string | undefined>) {
   const required = [
     'DATABASE_URL',
     'FRONTEND_URL',
-    'CORS_ORIGIN',
     'JWT_SECRET',
     'JWT_REFRESH_SECRET',
   ];
