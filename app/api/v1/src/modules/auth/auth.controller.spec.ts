@@ -82,11 +82,7 @@ describe('AuthController', () => {
     const response = makeResponse();
     response.req.cookies.oauth_state = 'expected-state';
 
-    await controller.googleCallback(
-      undefined as any,
-      'expected-state',
-      response,
-    );
+    await controller.googleCallback(undefined as any, 'expected-state', response);
 
     expect(response.redirect).toHaveBeenCalledWith(
       'http://localhost:3000/auth/callback?status=error',
