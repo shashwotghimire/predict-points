@@ -67,7 +67,9 @@ export class PredictionsService {
     const normalizedStatus = query.status?.toUpperCase();
     const statusFilter =
       normalizedStatus &&
-      Object.values(PredictionStatus).includes(normalizedStatus)
+      Object.values(PredictionStatus).includes(
+        normalizedStatus as PredictionStatus,
+      )
         ? (normalizedStatus as PredictionStatus)
         : undefined;
 
