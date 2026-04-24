@@ -11,7 +11,9 @@ import { RealtimeSyncPayload, RealtimeTopic } from './realtime.types';
 import { getRequiredSecret } from '../../common/security/env';
 
 const allowedOrigins = (
-  process.env.CORS_ORIGIN ?? 'http://localhost:3000,http://127.0.0.1:3000'
+  process.env.CORS_ORIGIN ??
+  process.env.FRONTEND_URL ??
+  'http://localhost:3000,http://127.0.0.1:3000'
 )
   .split(',')
   .map((item) => item.trim())
