@@ -82,10 +82,11 @@ async function bootstrap() {
   app.use('/api/v1/auth/google/callback', authLimiter);
   app.use('/api/v1/auth/refresh', refreshLimiter);
 
-  const configuredCorsOrigins = process.env.CORS_ORIGIN;
+  const configuredCorsOrigins =
+    process.env.CORS_ORIGIN ?? process.env.FRONTEND_URL;
   if (isProduction() && !configuredCorsOrigins) {
     throw new Error(
-      'CORS_ORIGIN must be set in production (comma-separated list of trusted origins).',
+      'Set CORS_ORIGIN (comma-separated list) or FRONTEND_URL in production.',
     );
   }
 
